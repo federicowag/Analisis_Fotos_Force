@@ -371,7 +371,7 @@ function App() {
       <header className="topHeader">
         <div>
           <span className="eyebrow">Herramienta de revisión manual</span>
-          <h1>Revisor de reclamos Bees Force</h1>
+          <h1>Analisis_Fotos_Force</h1>
           <p>
             Cargá el Excel, filtrá por promotor y revisá las imágenes
             invalidadas para definir cuáles corresponde reclamar.
