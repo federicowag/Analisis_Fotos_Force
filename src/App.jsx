@@ -4,6 +4,7 @@ import "./App.css";
 
 function App() {
   const [rows, setRows] = useState([]);
+  const [allRows, setAllRows] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [decisions, setDecisions] = useState({});
   const [fileName, setFileName] = useState("");
@@ -12,6 +13,7 @@ function App() {
   const [search, setSearch] = useState("");
   const [fileKey, setFileKey] = useState("");
   const [lastSaved, setLastSaved] = useState("");
+  const [loadedImageUrl, setLoadedImageUrl] = useState("");
 
   const normalize = (value) => String(value ?? "").trim();
   const upper = (value) => normalize(value).toUpperCase();
@@ -159,13 +161,15 @@ function App() {
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
 
-    const prepared = json
-      .map((row, index) => ({
-        ...row,
-        __id: `fila-${index}`,
-        __fila_original: index + 2,
-      }))
-      .filter(isCandidate);
+    const tagged = json.map((row, index) => ({
+      ...row,
+      __id: `fila-${index}`,
+      __fila_original: index + 2,
+    }));
+
+    const prepared = tagged.filter(isCandidate);
+
+    setAllRows(tagged);
 
     const savedProgress = localStorage.getItem(getStorageKey(newFileKey));
 
@@ -248,7 +252,8 @@ function App() {
         statusFilter === "todos" ||
         (statusFilter === "pendientes" && !decision) ||
         (statusFilter === "correctos" && decision === "correcto") ||
-        (statusFilter === "incorrectos" && decision === "incorrecto");
+        (statusFilter === "incorrectos" && decision === "incorrecto") ||
+        (statusFilter === "fraude" && decision === "fraude");
 
       const matchesPromotor =
         promotorFilter === "todos" || promotor === promotorFilter;
@@ -265,15 +270,44 @@ function App() {
       ? filteredRows[Math.min(currentIndex, filteredRows.length - 1)]
       : null;
 
+  const currentPosition = current
+    ? rows.findIndex((row) => row.__id === current.__id) + 1
+    : 0;
+
+  const decisionValue = current ? decisions[current.__id] : undefined;
+  const currentImageUrl = current ? getImageUrl(current) : "";
+  const imageLoading = currentImageUrl !== loadedImageUrl;
+
+  useEffect(() => {
+    if (!current) return;
+
+    const idx = filteredRows.findIndex((row) => row.__id === current.__id);
+    if (idx === -1) return;
+
+    filteredRows.slice(idx + 1, idx + 3).forEach((row) => {
+      const url = getImageUrl(row);
+      if (url) {
+        const preloader = new window.Image();
+        preloader.src = url;
+      }
+    });
+  }, [current, filteredRows]);
+
   const mark = (value) => {
     if (!current) return;
+
+    const staysVisible =
+      statusFilter === "todos" ||
+      (statusFilter === "correctos" && value === "correcto") ||
+      (statusFilter === "incorrectos" && value === "incorrecto") ||
+      (statusFilter === "fraude" && value === "fraude");
 
     setDecisions((prev) => ({
       ...prev,
       [current.__id]: value,
     }));
 
-    if (currentIndex < filteredRows.length - 1) {
+    if (staysVisible && currentIndex < filteredRows.length - 1) {
       setCurrentIndex(currentIndex + 1);
     }
   };
@@ -289,27 +323,108 @@ function App() {
   };
 
   const exportExcel = () => {
-    const output = rows.map((row) => {
-      const decision = decisions[row.__id] || "pendiente";
-      const { __id, ...cleanRow } = row;
+    const candidateIds = new Set(rows.map((row) => row.__id));
+
+    const output = allRows.map((row) => {
+      const { __id, __fila_original, ...cleanRow } = row;
+      const decision = decisions[__id];
+
+      const clasificacion = !candidateIds.has(__id)
+        ? ""
+        : decision === "correcto"
+        ? "RECLAMAR"
+        : decision === "incorrecto"
+        ? "NO RECLAMAR"
+        : decision === "fraude"
+        ? "FRAUDE"
+        : "PENDIENTE DE REVISION";
 
       return {
         ...cleanRow,
-        FECHA_EJECUCION_DETECTADA: getExecutionDate(row),
-        REVISION_MANUAL: decision,
-        ACCION_SUGERIDA:
-          decision === "correcto"
-            ? "RECLAMAR - FOTO BIEN EJECUTADA / POSIBLE FALLO DE ALGORITMO"
-            : decision === "incorrecto"
-            ? "NO RECLAMAR"
-            : "PENDIENTE DE REVISION",
+        CLASIFICACION_REVISION_MANUAL: clasificacion,
       };
     });
 
+    const fraudeRows = rows
+      .filter((row) => decisions[row.__id] === "fraude")
+      .map((row) => ({
+        PROMOTOR: getPromotor(row),
+        FECHA_EJECUCION: getExecutionDate(row),
+        DISTRIBUIDOR: getColumn(row, [
+          "Distri/Directa",
+          "distribuidor",
+          "DISTRIBUIDOR",
+          "desc_ddc_wh",
+        ]),
+        CLIENTE_POC: getColumn(row, [
+          "POC ID",
+          "cliente_id",
+          "cliente",
+          "BdrId",
+          "PDV",
+        ]),
+        NOMBRE_CLIENTE: getColumn(row, [
+          "POC Nombre",
+          "Nombre POC",
+          "cliente_nombre",
+          "nombre cliente",
+        ]),
+        TAREA: getColumn(row, ["Detalle Tarea", "Tarea", "tarea", "TAREA"]),
+        IMAGEN: getImageUrl(row),
+      }));
+
+    const columnWidths = (data) => {
+      if (data.length === 0) return [];
+
+      return Object.keys(data[0]).map((key) => {
+        const maxLen = data.reduce((max, row) => {
+          const len = String(row[key] ?? "").length;
+          return len > max ? len : max;
+        }, key.length);
+
+        return { wch: Math.min(Math.max(maxLen + 1, 8), 35) };
+      });
+    };
+
+    const applyDateFormat = (ws, data, columnNames) => {
+      if (data.length === 0) return;
+
+      const headers = Object.keys(data[0]);
+      const colIndex = headers.findIndex((h) =>
+        columnNames.some((name) => upper(h) === upper(name))
+      );
+      if (colIndex === -1) return;
+
+      const colLetter = XLSX.utils.encode_col(colIndex);
+
+      data.forEach((_, rowIndex) => {
+        const cell = ws[`${colLetter}${rowIndex + 2}`];
+        if (cell && cell.t === "n") {
+          cell.z = "dd/mm/yyyy";
+        }
+      });
+    };
+
     const ws = XLSX.utils.json_to_sheet(output);
+    ws["!cols"] = columnWidths(output);
+    applyDateFormat(ws, output, [
+      "Fecha",
+      "Fecha Ejecucion",
+      "Fecha Ejecución",
+      "Dia",
+      "Día",
+    ]);
+
     const wb = XLSX.utils.book_new();
 
     XLSX.utils.book_append_sheet(wb, ws, "revision");
+
+    if (fraudeRows.length > 0) {
+      const wsFraude = XLSX.utils.json_to_sheet(fraudeRows);
+      wsFraude["!cols"] = columnWidths(fraudeRows);
+      XLSX.utils.book_append_sheet(wb, wsFraude, "fraude");
+    }
+
     XLSX.writeFile(wb, "revision_reclamos_bees_force.xlsx");
   };
 
@@ -338,7 +453,10 @@ function App() {
   const incorrectos = Object.values(decisions).filter(
     (v) => v === "incorrecto"
   ).length;
-  const pendientes = total - correctos - incorrectos;
+  const fraudes = Object.values(decisions).filter(
+    (v) => v === "fraude"
+  ).length;
+  const pendientes = total - correctos - incorrectos - fraudes;
 
   const goPrevious = () => {
     setCurrentIndex((prev) => Math.max(prev - 1, 0));
@@ -362,6 +480,7 @@ function App() {
 
     if (decision === "correcto") return "Correcto / reclamar";
     if (decision === "incorrecto") return "Incorrecto / no reclamar";
+    if (decision === "fraude") return "Fraude / hablar con promotor";
 
     return "Pendiente de revisión";
   };
@@ -371,11 +490,7 @@ function App() {
       <header className="topHeader">
         <div>
           <span className="eyebrow">Herramienta de revisión manual</span>
-          <h1>Analisis_Fotos_Force</h1>
-          <p>
-            Cargá el Excel, filtrá por promotor y revisá las imágenes
-            invalidadas para definir cuáles corresponde reclamar.
-          </p>
+          <h1>Analisis Fotos Force</h1>
         </div>
 
         <label className="uploadButton">
@@ -401,9 +516,10 @@ function App() {
 
         <div className="stats">
           <Metric label="A revisar" value={total} />
-          <Metric label="Correctas / reclamar" value={correctos} />
-          <Metric label="Incorrectas" value={incorrectos} />
-          <Metric label="Pendientes" value={pendientes} />
+          <Metric label="Correctas / reclamar" value={correctos} tone="good" />
+          <Metric label="Incorrectas" value={incorrectos} tone="bad" />
+          <Metric label="Fraude" value={fraudes} tone="fraude" />
+          <Metric label="Pendientes" value={pendientes} tone="pending" />
           <Metric label="Filtro actual" value={filteredRows.length} />
         </div>
 
@@ -453,6 +569,7 @@ function App() {
                 <option value="todos">Todos</option>
                 <option value="correctos">Correctas / reclamar</option>
                 <option value="incorrectos">Incorrectas</option>
+                <option value="fraude">Fraude</option>
               </select>
             </div>
 
@@ -477,8 +594,7 @@ function App() {
             <div className="imageHeader">
               <div>
                 <strong>
-                  Imagen {Math.min(currentIndex + 1, filteredRows.length)} de{" "}
-                  {filteredRows.length}
+                  Imagen {currentPosition} de {total}
                 </strong>
                 <span>{getDecisionLabel()}</span>
               </div>
@@ -489,30 +605,45 @@ function App() {
             </div>
 
             <div className="imageCanvas">
+              {imageLoading && (
+                <div className="imageLoader">
+                  <span className="spinner" />
+                  <span>Cargando imagen...</span>
+                </div>
+              )}
+
               <img
-                src={getImageUrl(current)}
+                key={current.__id}
+                src={currentImageUrl}
                 alt="Evidencia"
+                className={imageLoading ? "imageHidden" : ""}
+                onLoad={() => setLoadedImageUrl(currentImageUrl)}
                 onError={(e) => {
                   e.currentTarget.style.display = "none";
+                  setLoadedImageUrl(currentImageUrl);
                 }}
               />
             </div>
           </section>
 
           <aside className="sidePanel">
-            <div className="stickyBox">
-              <div className="decisionCard">
+            <div className={`stickyBox status-${decisionValue || "pendiente"}`}>
+              <div className="statusRow">
                 <span className="smallLabel">Estado actual</span>
                 <strong>{getDecisionLabel()}</strong>
               </div>
 
               <div className="mainActions">
                 <button className="good" onClick={() => mark("correcto")}>
-                  V Correcto / reclamar
+                  <span className="btnIcon">✓</span> Correcto / reclamar
                 </button>
 
                 <button className="bad" onClick={() => mark("incorrecto")}>
-                  X Incorrecto
+                  <span className="btnIcon">✕</span> Incorrecto
+                </button>
+
+                <button className="fraude" onClick={() => mark("fraude")}>
+                  <span className="btnIcon">⚠</span> Fraude
                 </button>
               </div>
 
@@ -530,9 +661,9 @@ function App() {
                 </button>
               </div>
 
-              <div className="infoBox">
-                <h2>Datos de la tarea</h2>
+              <div className="infoTitle">Datos de la tarea</div>
 
+              <div className="infoGrid">
                 <Info label="Fila Excel" value={current.__fila_original} />
 
                 <Info
@@ -589,6 +720,7 @@ function App() {
                     "tarea",
                     "TAREA",
                   ])}
+                  wide
                 />
 
                 <Info
@@ -612,19 +744,20 @@ function App() {
                 />
 
                 <Info
-                  label="Justificación"
-                  value={getColumn(current, [
-                    "Justificacion",
-                    "Justificación",
-                  ])}
-                />
-
-                <Info
                   label="Visita válida"
                   value={getColumn(current, [
                     "Visita Valida",
                     "Visita Válida",
                   ])}
+                />
+
+                <Info
+                  label="Justificación"
+                  value={getColumn(current, [
+                    "Justificacion",
+                    "Justificación",
+                  ])}
+                  wide
                 />
               </div>
             </div>
@@ -650,18 +783,18 @@ function App() {
   );
 }
 
-function Metric({ label, value }) {
+function Metric({ label, value, tone }) {
   return (
-    <div>
+    <div className={tone ? `tone-${tone}` : undefined}>
       <strong>{value}</strong>
       <span>{label}</span>
     </div>
   );
 }
 
-function Info({ label, value }) {
+function Info({ label, value, wide }) {
   return (
-    <div className="info">
+    <div className={`info${wide ? " wide" : ""}`}>
       <span>{label}</span>
       <strong>{value || "-"}</strong>
     </div>
