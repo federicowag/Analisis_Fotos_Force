@@ -10,6 +10,7 @@ function App() {
   const [fileName, setFileName] = useState("");
   const [statusFilter, setStatusFilter] = useState("pendientes");
   const [promotorFilter, setPromotorFilter] = useState("todos");
+  const [fechaExcluidas, setFechaExcluidas] = useState([]);
   const [search, setSearch] = useState("");
   const [fileKey, setFileKey] = useState("");
   const [lastSaved, setLastSaved] = useState("");
@@ -182,6 +183,7 @@ function App() {
         setCurrentIndex(parsed.currentIndex || 0);
         setStatusFilter(parsed.statusFilter || "pendientes");
         setPromotorFilter(parsed.promotorFilter || "todos");
+        setFechaExcluidas(parsed.fechaExcluidas || []);
         setSearch(parsed.search || "");
         setLastSaved(parsed.savedAt || "");
       } catch {
@@ -190,6 +192,7 @@ function App() {
         setDecisions({});
         setStatusFilter("pendientes");
         setPromotorFilter("todos");
+        setFechaExcluidas([]);
         setSearch("");
         setLastSaved("");
       }
@@ -199,6 +202,7 @@ function App() {
       setDecisions({});
       setStatusFilter("pendientes");
       setPromotorFilter("todos");
+      setFechaExcluidas([]);
       setSearch("");
       setLastSaved("");
     }
@@ -212,6 +216,7 @@ function App() {
       currentIndex,
       statusFilter,
       promotorFilter,
+      fechaExcluidas,
       search,
       fileName,
       savedAt: new Date().toLocaleString(),
@@ -224,6 +229,7 @@ function App() {
     currentIndex,
     statusFilter,
     promotorFilter,
+    fechaExcluidas,
     search,
     fileName,
     fileKey,
@@ -240,6 +246,37 @@ function App() {
 
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [rows]);
+
+  const fechaSortKey = (label) => {
+    const [d, m, y] = label.split("/");
+    if (!d || !m || !y) return label;
+    return `${y}${m.padStart(2, "0")}${d.padStart(2, "0")}`;
+  };
+
+  const fechas = useMemo(() => {
+    const set = new Set();
+
+    rows.forEach((row) => {
+      const fecha = getExecutionDate(row);
+      if (fecha && fecha !== "-") set.add(fecha);
+    });
+
+    return Array.from(set).sort((a, b) =>
+      fechaSortKey(a).localeCompare(fechaSortKey(b))
+    );
+  }, [rows]);
+
+  const fechaResumen =
+    fechaExcluidas.length === 0
+      ? "Todas las fechas"
+      : `${fechas.length - fechaExcluidas.length} de ${fechas.length} fechas`;
+
+  const toggleFecha = (fecha, incluir) => {
+    setFechaExcluidas((prev) =>
+      incluir ? prev.filter((f) => f !== fecha) : [...prev, fecha]
+    );
+    setCurrentIndex(0);
+  };
 
   const filteredRows = useMemo(() => {
     const q = upper(search);
@@ -258,12 +295,14 @@ function App() {
       const matchesPromotor =
         promotorFilter === "todos" || promotor === promotorFilter;
 
+      const matchesFecha = !fechaExcluidas.includes(getExecutionDate(row));
+
       const matchesSearch =
         !q || upper(Object.values(row).join(" ")).includes(q);
 
-      return matchesStatus && matchesPromotor && matchesSearch;
+      return matchesStatus && matchesPromotor && matchesFecha && matchesSearch;
     });
-  }, [rows, decisions, statusFilter, promotorFilter, search]);
+  }, [rows, decisions, statusFilter, promotorFilter, fechaExcluidas, search]);
 
   const current =
     filteredRows.length > 0
@@ -469,6 +508,7 @@ function App() {
   const resetFilters = () => {
     setStatusFilter("pendientes");
     setPromotorFilter("todos");
+    setFechaExcluidas([]);
     setSearch("");
     setCurrentIndex(0);
   };
@@ -554,6 +594,48 @@ function App() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="filterGroup">
+              <label>Fecha</label>
+              <details className="multiSelect">
+                <summary>{fechaResumen}</summary>
+                <div className="multiSelectPanel">
+                  <div className="multiSelectActions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFechaExcluidas([]);
+                        setCurrentIndex(0);
+                      }}
+                    >
+                      Seleccionar todas
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFechaExcluidas([...fechas]);
+                        setCurrentIndex(0);
+                      }}
+                    >
+                      Ninguna
+                    </button>
+                  </div>
+
+                  {fechas.map((fecha) => (
+                    <label key={fecha} className="multiSelectOption">
+                      <input
+                        type="checkbox"
+                        checked={!fechaExcluidas.includes(fecha)}
+                        onChange={(e) =>
+                          toggleFecha(fecha, e.target.checked)
+                        }
+                      />
+                      {fecha}
+                    </label>
+                  ))}
+                </div>
+              </details>
             </div>
 
             <div className="filterGroup">

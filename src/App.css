@@ -159,13 +159,14 @@ h1 {
 
 .filters {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr auto auto auto;
+  grid-template-columns: 1.3fr 1fr 1fr 1fr auto auto auto;
   gap: 12px;
   margin-top: 16px;
   align-items: end;
 }
 
 .filterGroup {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -194,6 +195,99 @@ h1 {
 .filterGroup select option {
   color: #111827;
   background: white;
+}
+
+.multiSelect {
+  width: 100%;
+}
+
+.multiSelect summary {
+  width: 100%;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  padding: 0 34px 0 12px;
+  font-size: 14px;
+  background: white;
+  color: #111827;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+  position: relative;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.multiSelect summary::-webkit-details-marker {
+  display: none;
+}
+
+.multiSelect summary::after {
+  content: "▾";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+}
+
+.multiSelect[open] summary::after {
+  content: "▴";
+}
+
+.multiSelectPanel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  min-width: 100%;
+  max-height: 260px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+  padding: 8px;
+}
+
+.multiSelectActions {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.multiSelectActions button {
+  flex: 1;
+  height: 30px;
+  font-size: 12px;
+  background: #e5e7eb;
+  color: #111827;
+  border-radius: 8px;
+}
+
+.multiSelectActions button:hover {
+  background: #d1d5db;
+}
+
+.multiSelectOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  font-size: 14px;
+  color: #111827;
+  white-space: nowrap;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.multiSelectOption:hover {
+  background: #f1f5f9;
 }
 
 button {
