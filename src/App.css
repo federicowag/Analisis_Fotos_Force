@@ -626,6 +626,29 @@ button:active {
   font-weight: bold;
 }
 
+.footerCopyright p {
+  margin: 0;
+}
+
+.footerCopyright .contact {
+  margin-top: 4px;
+  font-weight: normal;
+}
+
+.footerCopyright .contact a {
+  color: #64748b;
+  text-decoration: none;
+}
+
+.footerCopyright .contact a:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.footerCopyright .dot {
+  margin: 0 8px;
+}
+
 @media (max-width: 1200px) {
   .filters {
     grid-template-columns: 1fr 1fr 1fr;

@@ -859,7 +859,14 @@ function App() {
       )}
 
       <footer className="footerCopyright">
-        © Federico Nicolas Wagner
+        <p>© Federico Nicolas Wagner</p>
+        <p className="contact">
+          <a href="mailto:federico.wagner@grupodelorenzi.com">
+            federico.wagner@grupodelorenzi.com
+          </a>
+          <span className="dot">·</span>
+          <a href="tel:+5493442476272">+54 9 3442 476272</a>
+        </p>
       </footer>
     </div>
   );
