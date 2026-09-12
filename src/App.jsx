@@ -110,6 +110,27 @@ function App() {
     );
   };
 
+  const getDistribuidor = (row) => {
+    return getColumn(row, [
+      "Distri/Directa",
+      "distribuidor",
+      "DISTRIBUIDOR",
+      "desc_ddc_wh",
+    ]);
+  };
+
+  const getPocId = (row) => {
+    return getColumn(row, ["POC ID", "cliente_id", "cliente", "BdrId", "PDV"]);
+  };
+
+  const getDetalleTarea = (row) => {
+    return getColumn(row, ["Detalle Tarea", "Tarea", "tarea", "TAREA"]);
+  };
+
+  const getIdTarea = (row) => {
+    return getColumn(row, ["ID Tarea", "id_tarea", "TaskId", "Task Id"]);
+  };
+
   const isCandidate = (row) => {
     const completada =
       Number(getColumn(row, ["Completada", "completada"])) || 0;
@@ -442,25 +463,27 @@ function App() {
       };
     });
 
+    // Hoja lista para subir a Google Sheets, con las columnas en el orden
+    // en que las pide la planilla de reclamos.
+    const reclamoRows = rows
+      .filter((row) => decisions[row.__id] === "correcto")
+      .map((row) => ({
+        "FECHA EJECUCION": getExecutionDate(row),
+        "POC ID": getPocId(row),
+        "DETALLE TAREA": getDetalleTarea(row),
+        IMAGEN: getImageUrl(row),
+        "ID TAREA": getIdTarea(row),
+        DISTRIBUIDOR: getDistribuidor(row),
+      }));
+
     const fraudeRows = rows
       .filter((row) => decisions[row.__id] === "fraude")
       .map((row) => ({
         PROMOTOR: getPromotor(row),
         FECHA_EJECUCION: getExecutionDate(row),
-        DISTRIBUIDOR: getColumn(row, [
-          "Distri/Directa",
-          "distribuidor",
-          "DISTRIBUIDOR",
-          "desc_ddc_wh",
-        ]),
-        CLIENTE_POC: getColumn(row, [
-          "POC ID",
-          "cliente_id",
-          "cliente",
-          "BdrId",
-          "PDV",
-        ]),
-        TAREA: getColumn(row, ["Detalle Tarea", "Tarea", "tarea", "TAREA"]),
+        DISTRIBUIDOR: getDistribuidor(row),
+        CLIENTE_POC: getPocId(row),
+        TAREA: getDetalleTarea(row),
         IMAGEN: getImageUrl(row),
       }));
 
@@ -509,6 +532,12 @@ function App() {
     const wb = XLSX.utils.book_new();
 
     XLSX.utils.book_append_sheet(wb, ws, "revision");
+
+    if (reclamoRows.length > 0) {
+      const wsReclamos = XLSX.utils.json_to_sheet(reclamoRows);
+      wsReclamos["!cols"] = columnWidths(reclamoRows);
+      XLSX.utils.book_append_sheet(wb, wsReclamos, "reclamos");
+    }
 
     if (fraudeRows.length > 0) {
       const wsFraude = XLSX.utils.json_to_sheet(fraudeRows);
@@ -833,36 +862,11 @@ function App() {
                   value={getExecutionDate(current)}
                 />
 
-                <Info
-                  label="Distribuidor"
-                  value={getColumn(current, [
-                    "Distri/Directa",
-                    "distribuidor",
-                    "DISTRIBUIDOR",
-                    "desc_ddc_wh",
-                  ])}
-                />
+                <Info label="Distribuidor" value={getDistribuidor(current)} />
 
-                <Info
-                  label="Promotor"
-                  value={getColumn(current, [
-                    "Promotor",
-                    "promotor",
-                    "PROMOTOR",
-                    "ROL_PROMOTOR",
-                  ])}
-                />
+                <Info label="Promotor" value={getPromotor(current)} />
 
-                <Info
-                  label="Cliente / POC"
-                  value={getColumn(current, [
-                    "POC ID",
-                    "cliente_id",
-                    "cliente",
-                    "BdrId",
-                    "PDV",
-                  ])}
-                />
+                <Info label="Cliente / POC" value={getPocId(current)} />
 
                 <Info
                   label="Nombre cliente"
@@ -874,16 +878,7 @@ function App() {
                   ])}
                 />
 
-                <Info
-                  label="Tarea"
-                  value={getColumn(current, [
-                    "Detalle Tarea",
-                    "Tarea",
-                    "tarea",
-                    "TAREA",
-                  ])}
-                  wide
-                />
+                <Info label="Tarea" value={getDetalleTarea(current)} wide />
 
                 <Info
                   label="Variable"
