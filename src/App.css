@@ -511,6 +511,43 @@ button:active {
   box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
 }
 
+.good:disabled,
+.bad:disabled,
+.fraude:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.lastMark {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #475569;
+  background: #f1f5f9;
+  border-radius: 10px;
+  padding: 7px 10px;
+}
+
+.lastMark strong {
+  color: #111827;
+}
+
+.lastMark button {
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  background: #e2e8f0;
+  color: #111827;
+}
+
+.lastMark button:hover {
+  background: #cbd5e1;
+}
+
 .btnIcon {
   font-size: 16px;
   line-height: 1;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import "./App.css";
 
@@ -15,6 +15,10 @@ function App() {
   const [fileKey, setFileKey] = useState("");
   const [lastSaved, setLastSaved] = useState("");
   const [loadedImageUrl, setLoadedImageUrl] = useState("");
+  const [lastMark, setLastMark] = useState(null);
+  const [slowImageUrl, setSlowImageUrl] = useState("");
+
+  const lastMarkAt = useRef(0);
 
   const normalize = (value) => String(value ?? "").trim();
   const upper = (value) => normalize(value).toUpperCase();
@@ -186,6 +190,7 @@ function App() {
         setFechaExcluidas(parsed.fechaExcluidas || []);
         setSearch(parsed.search || "");
         setLastSaved(parsed.savedAt || "");
+        setLastMark(null);
       } catch {
         setRows(prepared);
         setCurrentIndex(0);
@@ -195,6 +200,7 @@ function App() {
         setFechaExcluidas([]);
         setSearch("");
         setLastSaved("");
+        setLastMark(null);
       }
     } else {
       setRows(prepared);
@@ -205,6 +211,7 @@ function App() {
       setFechaExcluidas([]);
       setSearch("");
       setLastSaved("");
+      setLastMark(null);
     }
   };
 
@@ -317,6 +324,18 @@ function App() {
   const currentImageUrl = current ? getImageUrl(current) : "";
   const imageLoading = currentImageUrl !== loadedImageUrl;
 
+  // Mientras la foto no se ve no se puede decidir, pero si tarda demasiado
+  // se destraban los botones para no dejar la revisión frenada.
+  const blockDecision = imageLoading && slowImageUrl !== currentImageUrl;
+
+  useEffect(() => {
+    if (!imageLoading) return undefined;
+
+    const timer = setTimeout(() => setSlowImageUrl(currentImageUrl), 5000);
+
+    return () => clearTimeout(timer);
+  }, [imageLoading, currentImageUrl]);
+
   useEffect(() => {
     if (!current) return;
 
@@ -332,14 +351,35 @@ function App() {
     });
   }, [current, filteredRows]);
 
-  const mark = (value) => {
+  const mark = (value, event) => {
     if (!current) return;
+
+    // Nunca marcar una foto que todavia no se ve.
+    if (blockDecision) return;
+
+    // Al marcar, la tarea sale del filtro y la siguiente ocupa el mismo lugar
+    // debajo del cursor. Sin esta guarda, un doble click marca tambien esa
+    // segunda tarea sin que se haya llegado a ver la foto.
+    const now = Date.now();
+    if (now - lastMarkAt.current < 450) return;
+    lastMarkAt.current = now;
+
+    // El boton queda con el foco despues del click: sin esto, la barra
+    // espaciadora o Enter lo vuelven a disparar sobre la tarea siguiente.
+    if (event && event.currentTarget) event.currentTarget.blur();
 
     const staysVisible =
       statusFilter === "todos" ||
       (statusFilter === "correctos" && value === "correcto") ||
       (statusFilter === "incorrectos" && value === "incorrecto") ||
       (statusFilter === "fraude" && value === "fraude");
+
+    setLastMark({
+      id: current.__id,
+      fila: current.__fila_original,
+      value,
+      previous: decisions[current.__id],
+    });
 
     setDecisions((prev) => ({
       ...prev,
@@ -351,6 +391,22 @@ function App() {
     }
   };
 
+  const undoLastMark = () => {
+    if (!lastMark) return;
+
+    setDecisions((prev) => {
+      const copy = { ...prev };
+
+      if (lastMark.previous) copy[lastMark.id] = lastMark.previous;
+      else delete copy[lastMark.id];
+
+      return copy;
+    });
+
+    lastMarkAt.current = 0;
+    setLastMark(null);
+  };
+
   const clearDecision = () => {
     if (!current) return;
 
@@ -359,6 +415,8 @@ function App() {
       delete copy[current.__id];
       return copy;
     });
+
+    setLastMark(null);
   };
 
   const exportExcel = () => {
@@ -401,12 +459,6 @@ function App() {
           "cliente",
           "BdrId",
           "PDV",
-        ]),
-        NOMBRE_CLIENTE: getColumn(row, [
-          "POC Nombre",
-          "Nombre POC",
-          "cliente_nombre",
-          "nombre cliente",
         ]),
         TAREA: getColumn(row, ["Detalle Tarea", "Tarea", "tarea", "TAREA"]),
         IMAGEN: getImageUrl(row),
@@ -483,6 +535,7 @@ function App() {
     setPromotorFilter("todos");
     setSearch("");
     setLastSaved("");
+    setLastMark(null);
   };
 
   const total = rows.length;
@@ -513,16 +566,18 @@ function App() {
     setCurrentIndex(0);
   };
 
-  const getDecisionLabel = () => {
-    if (!current) return "Sin selección";
-
-    const decision = decisions[current.__id];
-
+  const decisionLabel = (decision) => {
     if (decision === "correcto") return "Correcto / reclamar";
     if (decision === "incorrecto") return "Incorrecto / no reclamar";
     if (decision === "fraude") return "Fraude / hablar con promotor";
 
     return "Pendiente de revisión";
+  };
+
+  const getDecisionLabel = () => {
+    if (!current) return "Sin selección";
+
+    return decisionLabel(decisions[current.__id]);
   };
 
   return (
@@ -716,18 +771,43 @@ function App() {
               </div>
 
               <div className="mainActions">
-                <button className="good" onClick={() => mark("correcto")}>
+                <button
+                  className="good"
+                  disabled={blockDecision}
+                  onClick={(e) => mark("correcto", e)}
+                >
                   <span className="btnIcon">✓</span> Correcto / reclamar
                 </button>
 
-                <button className="bad" onClick={() => mark("incorrecto")}>
+                <button
+                  className="bad"
+                  disabled={blockDecision}
+                  onClick={(e) => mark("incorrecto", e)}
+                >
                   <span className="btnIcon">✕</span> Incorrecto
                 </button>
 
-                <button className="fraude" onClick={() => mark("fraude")}>
+                <button
+                  className="fraude"
+                  disabled={blockDecision}
+                  onClick={(e) => mark("fraude", e)}
+                >
                   <span className="btnIcon">⚠</span> Fraude
                 </button>
               </div>
+
+              {lastMark && (
+                <div className="lastMark">
+                  <span>
+                    Última marca: fila {lastMark.fila} ·{" "}
+                    <strong>{decisionLabel(lastMark.value)}</strong>
+                  </span>
+
+                  <button type="button" onClick={undoLastMark}>
+                    Deshacer
+                  </button>
+                </div>
+              )}
 
               <div className="navigationActions">
                 <button className="secondary" onClick={goPrevious}>
