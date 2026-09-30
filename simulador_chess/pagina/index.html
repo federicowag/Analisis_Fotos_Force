@@ -217,13 +217,13 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
         <h3 style="font-size:.95rem;text-transform:uppercase;letter-spacing:.06em">Escalas</h3>
         <div class="opps" id="opps"></div>
       </div>
-      <p class="note" id="calcNote">Precio final = (lista × (1 + IVA) + internos) × (1 − suma de % de acciones). No incluye percepciones de IVA/IIBB ni precios negociados en BEES. Es una simulación: el precio definitivo lo calcula Chess al controlar el pedido.</p>
+      <p class="note" id="calcNote">Precio final = (lista × (1 + IVA) + internos) × (1 − suma de % de acciones). Percepciones: IIBB 3 % sobre neto + internos a no exentos; IVA 3 % sobre el neto a RI con pedido desde $ 100.000 de neto. No incluye precios negociados en BEES. Es una simulación: el precio definitivo lo calcula Chess al controlar el pedido.</p>
     </aside>
   </div>
 
   <footer class="foot">
     <div id="footData"></div>
-    <div>Solo lectura: la página no carga pedidos en Chess. No incluye percepciones de IVA/IIBB, límites de bultos por cliente ni precios negociados por BEES (promo "NEGOCIACION").</div>
+    <div>Solo lectura: la página no carga pedidos en Chess. No incluye límites de bultos por cliente ni precios negociados por BEES (promo "NEGOCIACION"). Los RI excluidos de la percepción de IVA salen de los pedidos recientes de Chess.</div>
   </footer>
 </div>
 
@@ -256,6 +256,8 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
     D.gcSet = {}; for (const [k, g] of Object.entries(D.gc)) D.gcSet[k] = new Set(g.c);
     D.cliIdx = D.clientes.map((c) => ({ c, k: norm(c[0] + " " + c[1] + " " + c[2]) }));
     D.comboMap = {}; for (const c of D.combos) D.comboMap[c.c] = c;
+    D.perc = Object.assign({ iva: 0.03, iva_min_neto: 100000, iibb: 0.03, iva_excluidos: [] }, D.percepciones || {});
+    D.ivaExcl = new Set(D.perc.iva_excluidos);
     cache[dist] = D;
     return D;
   }
@@ -306,7 +308,7 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
         opps.push({ a, q, curP, done: true });
       }
     }
-    let totLista = 0, totFinal = 0;
+    let totLista = 0, totFinal = 0, totNeto = 0, totInt = 0;
     for (const l of lines) {
       const pr = precioDe(l.c);
       l.pr = pr;
@@ -316,11 +318,22 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
       l.listaB = precio * (1 - bonLista / 100) * (1 + iva) + internos;
       // Chess descuenta los internos con el mismo % que el neto (verificado contra pedidos reales)
       l.finalB = l.listaB * (1 - l.pct / 100);
+      l.netoB = precio * (1 - bonLista / 100) * (1 - l.pct / 100);
+      l.intB = internos * (1 - l.pct / 100);
       l.sub = l.finalB * l.q;
       totLista += l.listaB * l.q;
       totFinal += l.sub;
+      totNeto += l.netoB * l.q;
+      totInt += l.intB * l.q;
     }
-    return { lines, opps, totLista, totFinal };
+    // percepciones (reglas observadas en pedidos de Chess):
+    // IVA 3 % sobre el neto a RI con pedido >= $100.000 de neto, salvo excluidos; IIBB 3 % sobre neto + internos a no exentos
+    const P = D.perc, c = S.cli;
+    const ivaEstado = c[5] !== "RI" ? "no" : D.ivaExcl.has(c[0]) ? "excluido" : totNeto + 1e-6 >= P.iva_min_neto ? "aplica" : "minimo";
+    const tIva = ivaEstado === "aplica" ? P.iva : 0, tIibb = c[6] ? 0 : P.iibb;
+    const percIva = tIva * totNeto, percIibb = tIibb * (totNeto + totInt);
+    for (const l of lines) if (l.pr) l.percB = tIva * l.netoB + tIibb * (l.netoB + l.intB);
+    return { lines, opps, totLista, totFinal, totNeto, percIva, percIibb, ivaEstado, total: totFinal + percIva + percIibb };
   }
 
   // ---------- render ----------
@@ -349,7 +362,8 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
       '<div class="chips" style="grid-column:1/-1">' +
       '<span class="chip ' + (l ? "" : "bad") + '">Lista ' + c[4] + (l ? " · " + esc(l.titulo) : " · sin precios cargados") + "</span>" +
       '<span class="chip">IVA ' + esc(c[5] || "?") + "</span>" +
-      '<span class="chip ' + (c[6] ? "ok" : "warn") + '">' + (c[6] ? "Exento IIBB" : "Percibe IIBB (no incluido)") + "</span>" +
+      '<span class="chip ' + (c[6] ? "ok" : "warn") + '">' + (c[6] ? "Exento IIBB" : "Percepción IIBB " + pctf(D.perc.iibb * 100)) + "</span>" +
+      (c[5] === "RI" ? '<span class="chip ' + (D.ivaExcl.has(c[0]) ? "ok" : "warn") + '">' + (D.ivaExcl.has(c[0]) ? "Excluido de percepción IVA" : "Percepción IVA " + pctf(D.perc.iva * 100) + " desde " + fmt.format(D.perc.iva_min_neto) + " de neto") + "</span>" : "") +
       '<span class="chip ok">' + canal.length + " acciones en " + esc(S.canal.toLowerCase()) + "</span>" +
       (otros.length ? '<span class="chip">' + otros.length + " solo en otros canales</span>" : "") +
       '<span class="chip">' + combosOk + " combos</span></div></div>";
@@ -372,7 +386,8 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
       if (l.pr) {
         h += '<td data-l="Desc." class="n ' + (l.pct ? "disc" : "muted") + '">' + (l.pct ? "−" + pctf(l.pct) : "—") + "</td>" +
           '<td data-l="Final x bulto" class="n"><b>' + fmt.format(l.finalB) + "</b>" + (l.pct ? '<div class="strike">' + fmt.format(l.listaB) + "</div>" : "") +
-          '<div class="unit">' + fmt2.format(l.finalB / (a[1] || 1)) + " x u</div></td>" +
+          '<div class="unit">' + fmt2.format(l.finalB / (a[1] || 1)) + " x u</div>" +
+          (l.percB ? '<div class="unit">con percep. ' + fmt.format(l.finalB + l.percB) + "</div>" : "") + "</td>" +
           '<td data-l="Subtotal" class="n">' + fmt.format(l.sub) + "</td>";
       } else h += '<td class="n muted">—</td><td></td><td></td>';
       h += '<td><button type="button" class="rm" data-rm="' + i + '" aria-label="Quitar renglón">×</button></td></tr>';
@@ -387,7 +402,11 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
       ? '<div class="row"><span class="muted">Bultos</span><span class="num">' + qf(n) + "</span></div>" +
         '<div class="row"><span class="muted">Total a precio de lista</span><span class="num">' + fmt.format(res.totLista) + "</span></div>" +
         '<div class="row"><span class="muted">Descuento por acciones</span><span class="num disc">−' + fmt.format(ahorro) + (res.totLista ? " (" + pctf((ahorro / res.totLista) * 100) + ")" : "") + "</span></div>" +
-        '<div class="row final"><span>Total con IVA</span><span class="big num">' + fmt.format(res.totFinal) + "</span></div>"
+        '<div class="row"><span class="muted">Subtotal con IVA</span><span class="num">' + fmt.format(res.totFinal) + "</span></div>" +
+        (res.percIva ? '<div class="row"><span class="muted">Percepción IVA ' + pctf(S.D.perc.iva * 100) + '</span><span class="num">' + fmt.format(res.percIva) + "</span></div>" : "") +
+        (res.percIibb ? '<div class="row"><span class="muted">Percepción IIBB ' + pctf(S.D.perc.iibb * 100) + '</span><span class="num">' + fmt.format(res.percIibb) + "</span></div>" : "") +
+        '<div class="row final"><span>Total</span><span class="big num">' + fmt.format(res.total) + "</span></div>" +
+        (res.ivaEstado === "minimo" ? '<p class="note">Percepción de IVA: se suma desde ' + fmt.format(S.D.perc.iva_min_neto) + " de neto (faltan " + fmt.format(S.D.perc.iva_min_neto - res.totNeto) + ").</p>" : "")
       : '<p class="note">Todavía no hay renglones. El total aparece a medida que cargás artículos.</p>';
     const ops = res.opps.filter((o) => !o.done).sort((a, b) => a.falta - b.falta).slice(0, 6);
     const done = res.opps.filter((o) => o.done).slice(0, 4);
@@ -418,14 +437,15 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
 
   function render() {
     renderCli();
-    const res = S.cli ? calcular() : { lines: [], opps: [], totLista: 0, totFinal: 0 };
+    const res = S.cli ? calcular() : { lines: [], opps: [], totLista: 0, totFinal: 0, percIva: 0, percIibb: 0, total: 0 };
     renderLines(res); renderTot(res); renderAcc();
   }
 
   // ---------- busquedas ----------
   function wireSearch(input, box, buscar, elegir) {
-    let items = [], sel = 0;
+    let items = [], sel = 0, blurT = 0;
     const paint = () => {
+      clearTimeout(blurT);
       if (!input.value.trim()) { box.hidden = true; return; }
       items = buscar(norm(input.value.trim()));
       sel = 0;
@@ -445,7 +465,7 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
     });
     box.addEventListener("mousedown", (e) => e.preventDefault());
     box.addEventListener("click", (e) => { const b = e.target.closest("button[data-i]"); if (!b) return; elegir(items[+b.dataset.i]); input.value = ""; box.hidden = true; });
-    input.addEventListener("blur", () => setTimeout(() => (box.hidden = true), 120));
+    input.addEventListener("blur", () => { blurT = setTimeout(() => (box.hidden = true), 120); });
   }
 
   wireSearch($("cliQ"), $("cliRes"), (q) => {

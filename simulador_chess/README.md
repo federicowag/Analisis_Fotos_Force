@@ -47,10 +47,15 @@ queda listado en `avisos.gp_aproximados`.
 - Precio final por bulto = (precio × (1 − bonif. lista) × (1 + IVA) + internos) × (1 − Σ %).
   Chess descuenta los impuestos internos con el mismo % que el neto (verificado contra
   pedidos reales). Sin acciones, la fórmula reproduce exactamente el `prefin` de Chess.
-- No incluye percepciones (IVA adicional e IIBB, 3 % + 3 % en RI de Entre Ríos), límites
-  de bultos por cliente ni los precios que BEES negocia por cliente: esos llegan a Chess
-  como promo "NEGOCIACION" (códigos 6xxx/7xxx) con el precio ya modificado y no están en
-  el maestro de acciones.
+- Percepciones, sumadas al total (reglas observadas en los pedidos de Chess):
+  - IIBB 3 % sobre neto + internos, a todo cliente no exento (RI, MT y CF).
+  - IVA 3 % sobre el neto, a RI con pedido desde $ 100.000 de neto. Los RI que en los
+    pedidos recientes superaron ese monto sin percepción se toman como excluidos
+    (`percepciones.iva_excluidos`).
+  Validado contra pedidos reales: el total coincide al peso cuando coinciden los descuentos.
+- No incluye límites de bultos por cliente ni los precios que BEES negocia por cliente:
+  esos llegan a Chess como promo "NEGOCIACION" (códigos 6xxx/7xxx) con el precio ya
+  modificado y no están en el maestro de acciones.
 
 ## Correrlo a mano
 

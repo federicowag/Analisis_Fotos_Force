@@ -12,6 +12,8 @@ Que baja, por distribuidora:
   - grupos de productos (incluidos los definidos por marca / calibre / sabor /
     unidad de negocio / articulo, que Chess no devuelve resueltos)
   - grupos de clientes con sus miembros
+  - tasas de percepcion de IVA / IIBB y los RI excluidos de la de IVA, tomados de
+    los pedidos recientes
 
 No se exportan costos, margenes, CUIT, telefonos ni mails.
 
@@ -272,6 +274,31 @@ def bajar_listas(chess, ids_listas, hoy):
     return listas, articulos
 
 
+PERC_IVA = 0.03          # percepcion de IVA a responsables inscriptos
+PERC_IVA_MIN_NETO = 100000  # Chess no la aplica en pedidos de menor neto (observado en pedidos reales)
+PERC_IIBB = 0.03         # percepcion de IIBB sobre neto + internos, a clientes no exentos
+
+
+def percepciones(chess):
+    """Tasas de percepcion y RI excluidos de la de IVA, aprendidos de los pedidos
+    recientes de Chess: un RI con pedidos por encima del minimo que nunca tuvo
+    percepcion de IVA se toma como excluido (certificado de exclusion)."""
+    filas = lista(chess.get("pedidos/listadoPedidos", piSkip=0, piTop=1000, pcFil="", pcOrd="",
+                            pcusr=chess.usuario).get("dsCarga", {}).get("eCarga"))
+    visto = {}
+    for r in filas:
+        if r.get("tipoiva") != "RI" or (r.get("netogra") or 0) < PERC_IVA_MIN_NETO:
+            continue
+        visto.setdefault(r["idcliente"], []).append(bool(r.get("iva2")))
+    return {
+        "iva": PERC_IVA,
+        "iva_min_neto": PERC_IVA_MIN_NETO,
+        "iibb": PERC_IIBB,
+        "iva_excluidos": sorted(c for c, v in visto.items() if not any(v)),
+        "pedidos_analizados": len(filas),
+    }
+
+
 def extraer(clave, conf, usuario, password):
     chess = Chess(conf["url"], usuario, password)
     hoy = datetime.now(ARG).date().isoformat()
@@ -295,6 +322,8 @@ def extraer(clave, conf, usuario, password):
     gp, sin_resolver, aproximados = resolver_grupos_productos(chess, ids_gp, todos)
     print(f"[{conf['nombre']}] {len(ids_gc)} grupos de clientes...")
     gc = resolver_grupos_clientes(chess, ids_gc)
+    print(f"[{conf['nombre']}] percepciones...")
+    perc = percepciones(chess)
     return {
         "dist": clave,
         "nombre": conf["nombre"],
@@ -306,6 +335,7 @@ def extraer(clave, conf, usuario, password):
         "combos": combos,
         "gp": gp,
         "gc": gc,
+        "percepciones": perc,
         "avisos": {"gp_sin_articulos": sin_resolver, "gp_aproximados": aproximados},
         "segundos": round(time.time() - t0),
     }
