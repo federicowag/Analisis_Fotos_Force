@@ -1,0 +1,5 @@
+.env
+*.env
+salida/
+pagina/data/
+__pycache__/

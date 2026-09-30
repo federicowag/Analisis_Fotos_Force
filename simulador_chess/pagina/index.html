@@ -1,0 +1,528 @@
+<title>Simulador de Pedidos Chess</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: nota de pedido — barra de contexto arriba, cliente y renglones a la izquierda, resumen fijo a la derecha (una columna en celular) */
+:root {
+  --bg: #f3f5f6;
+  --paper: #ffffff;
+  --ink: #15222b;
+  --muted: #5d6b75;
+  --line: #d9e0e4;
+  --line-soft: #e8edf0;
+  --accent: #0d6b5a;
+  --accent-soft: #e2f1ed;
+  --accent-ink: #ffffff;
+  --warn: #9a5b00;
+  --warn-soft: #fbf0dc;
+  --bad: #a3322a;
+  --bad-soft: #f8e5e3;
+  --focus: #2a6fdb;
+  --font-display: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1619; --paper: #172126; --ink: #e6edf0; --muted: #93a3ac; --line: #2a3840; --line-soft: #223036;
+    --accent: #3fb89c; --accent-soft: #173a33; --accent-ink: #06201a; --warn: #e9b44c; --warn-soft: #3a2d12;
+    --bad: #ef8a80; --bad-soft: #3c1f1c; --focus: #7aa7ff; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1619; --paper: #172126; --ink: #e6edf0; --muted: #93a3ac; --line: #2a3840; --line-soft: #223036;
+  --accent: #3fb89c; --accent-soft: #173a33; --accent-ink: #06201a; --warn: #e9b44c; --warn-soft: #3a2d12;
+  --bad: #ef8a80; --bad-soft: #3c1f1c; --focus: #7aa7ff; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 12px 48px; display: grid; gap: 14px; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; letter-spacing: .01em; }
+h1 { font-size: 1.45rem; font-weight: 700; }
+h2 { font-size: 1.1rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.num, td.n, .money { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--font-mono); font-size: .82em; }
+.muted { color: var(--muted); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* barra superior */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; justify-content: space-between; }
+.brand { display: grid; gap: 2px; }
+.fresh { font-size: .85rem; color: var(--muted); }
+.fresh b { color: var(--ink); font-weight: 600; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--paper); }
+.seg button { border: 0; background: transparent; padding: 7px 14px; font-family: var(--font-display); font-weight: 600; letter-spacing: .04em; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+label.inline { display: inline-flex; gap: 6px; align-items: center; font-size: .9rem; color: var(--muted); }
+select, input[type="search"], input[type="number"] { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+@media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }
+.panel section { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.step { font-family: var(--font-display); font-weight: 600; color: var(--muted); font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; }
+
+/* buscadores */
+.search { position: relative; }
+.search input { width: 100%; padding: 10px 12px; font-size: 1rem; }
+.results { position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); background: var(--paper); border: 1px solid var(--line); border-radius: var(--r); max-height: 340px; overflow: auto; box-shadow: 0 8px 24px rgb(0 0 0 / .12); }
+.results button { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line-soft); background: transparent; padding: 9px 12px; cursor: pointer; align-items: baseline; }
+.results button:hover, .results button.sel { background: var(--accent-soft); }
+.results .code { font-family: var(--font-mono); font-size: .8rem; color: var(--muted); }
+.results .desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.results .side { font-size: .85rem; color: var(--muted); white-space: nowrap; }
+.results .empty { padding: 12px; color: var(--muted); }
+
+/* ficha cliente */
+.cli { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; }
+.cli .name { font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; }
+.cli .sub { color: var(--muted); font-size: .9rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: .78rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.chip.ok { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.chip.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.chip.bad { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+.link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; font-size: .9rem; }
+
+/* renglones */
+.table-wrap { overflow-x: auto; margin-inline: -14px; padding-inline: 14px; }
+table { border-collapse: collapse; width: 100%; min-width: 560px; }
+th { font-family: var(--font-display); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; font-size: .74rem; color: var(--muted); text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+th.n, td.n { text-align: right; white-space: nowrap; }
+td .unit { font-size: .8rem; color: var(--muted); }
+td { padding: 9px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+td .art { font-weight: 600; }
+td .meta { font-size: .8rem; color: var(--muted); }
+td input[type="number"] { width: 58px; text-align: right; padding: 5px 6px; }
+.qty { display: flex; gap: 6px; align-items: center; }
+.qty span { font-size: .72rem; color: var(--muted); }
+.disc { color: var(--accent); font-weight: 600; }
+.strike { text-decoration: line-through; color: var(--muted); font-size: .82rem; }
+.acc-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.rm { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 1.1rem; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+.rm:hover { color: var(--bad); background: var(--bad-soft); }
+@media (max-width: 640px) {
+  .table-wrap { overflow: visible; margin-inline: 0; padding-inline: 0; }
+  table { min-width: 0; }
+  thead { display: none; }
+  table, tbody { display: block; }
+  tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 8px 10px; padding-block: 12px; border-bottom: 1px solid var(--line-soft); }
+  td { display: block; padding: 0; border: 0; min-width: 0; }
+  td:first-child { grid-column: 1 / 4; }
+  td:last-child { grid-column: 4; grid-row: 1; justify-self: end; }
+  td.qcell { grid-column: 1 / -1; }
+  td.n { text-align: left; }
+  td[data-l]::before { content: attr(data-l); display: block; font-family: var(--font-display); font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  td input[type="number"] { width: 72px; }
+}
+.empty-state { border: 1px dashed var(--line); border-radius: var(--r); padding: 18px; color: var(--muted); display: grid; gap: 6px; }
+.empty-state b { color: var(--ink); }
+
+/* resumen */
+.summary { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+.tot { display: grid; gap: 6px; }
+.tot .row { display: flex; justify-content: space-between; gap: 10px; }
+.tot .row > :last-child { white-space: nowrap; }
+.tot .big { font-family: var(--font-display); font-size: 1.9rem; font-weight: 700; line-height: 1.1; }
+.tot .row.final { border-top: 1px solid var(--line); padding-top: 8px; align-items: baseline; }
+.opps { display: grid; gap: 8px; }
+.opp { border-left: 3px solid var(--warn); background: var(--warn-soft); padding: 8px 10px; border-radius: 0 6px 6px 0; font-size: .88rem; }
+.opp b { font-weight: 600; }
+.opp.done { border-left-color: var(--accent); background: var(--accent-soft); }
+.note { font-size: .8rem; color: var(--muted); }
+
+/* acciones del cliente */
+details.accs > summary { cursor: pointer; font-family: var(--font-display); font-weight: 600; letter-spacing: .04em; }
+.acc { border-top: 1px solid var(--line-soft); padding-block: 8px; display: grid; gap: 4px; }
+.acc .h { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.acc .t { font-weight: 600; }
+.esc { display: flex; flex-wrap: wrap; gap: 6px; font-size: .84rem; }
+.esc span { background: var(--bg); border-radius: 4px; padding: 1px 6px; }
+.banner { padding: 10px 12px; border-radius: var(--r); background: var(--warn-soft); color: var(--warn); font-size: .9rem; }
+.banner.bad { background: var(--bad-soft); color: var(--bad); }
+.foot { font-size: .8rem; color: var(--muted); display: grid; gap: 4px; }
+@media (max-width: 520px) {
+  .tot .big { font-size: 1.6rem; }
+  h1 { font-size: 1.25rem; }
+}
+@media (prefers-reduced-motion: no-preference) { .results button { transition: background .12s; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>Simulador de Pedidos</h1>
+      <div class="fresh" id="fresh">Cargando datos de Chess…</div>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Distribuidora" id="distSeg">
+        <button type="button" data-dist="lifa" aria-pressed="true">LIFA</button>
+        <button type="button" data-dist="delorenzi" aria-pressed="false">DELORENZI</button>
+      </div>
+      <label class="inline" for="canal">Canal
+        <select id="canal">
+          <option value="PREVENTA">Preventa</option>
+          <option value="BEES">BEES</option>
+          <option value="TELESALES">Telesales</option>
+          <option value="MOSTRADOR">Mostrador</option>
+          <option value="B2B">B2B</option>
+          <option value="NEGOCIACION">Negociación</option>
+        </select>
+      </label>
+    </div>
+  </header>
+
+  <div id="loadErr" class="banner bad" hidden></div>
+
+  <div class="grid">
+    <main class="panel" style="gap:16px">
+      <section style="display:grid;gap:10px">
+        <div class="panel-head"><span class="step">1 · Cliente</span><button type="button" class="link" id="cliClear" hidden>Cambiar cliente</button></div>
+        <div class="search" id="cliSearchBox">
+          <input type="search" id="cliQ" placeholder="Código, razón social o nombre de fantasía" autocomplete="off" aria-label="Buscar cliente">
+          <div class="results" id="cliRes" hidden></div>
+        </div>
+        <div id="cliCard" hidden></div>
+      </section>
+
+      <section style="display:grid;gap:10px" id="pedidoSec">
+        <div class="panel-head"><span class="step">2 · Pedido</span><button type="button" class="link" id="vaciar" hidden>Vaciar pedido</button></div>
+        <div class="search">
+          <input type="search" id="artQ" placeholder="Buscar artículo o combo por código o descripción" autocomplete="off" aria-label="Buscar artículo" disabled>
+          <div class="results" id="artRes" hidden></div>
+        </div>
+        <div id="lines"></div>
+      </section>
+
+      <section id="accSec" hidden>
+        <details class="accs" id="accDetails">
+          <summary id="accSummary">Acciones de este cliente</summary>
+          <div style="display:grid;gap:8px;margin-top:10px">
+            <input type="search" id="accQ" placeholder="Filtrar acciones" aria-label="Filtrar acciones">
+            <div id="accList"></div>
+          </div>
+        </details>
+      </section>
+    </main>
+
+    <aside class="panel summary" aria-label="Resumen del pedido">
+      <h2>Resumen</h2>
+      <div class="tot" id="tot"></div>
+      <div id="oppsWrap" style="display:grid;gap:8px" hidden>
+        <h3 style="font-size:.95rem;text-transform:uppercase;letter-spacing:.06em">Escalas</h3>
+        <div class="opps" id="opps"></div>
+      </div>
+      <p class="note" id="calcNote">Precio final = lista × (1 − suma de % de acciones) × (1 + IVA) + impuestos internos. Es una simulación: el precio definitivo lo calcula Chess al controlar el pedido.</p>
+    </aside>
+  </div>
+
+  <footer class="foot">
+    <div id="footData"></div>
+    <div>Solo lectura: la página no carga pedidos en Chess. No incluye percepciones de IIBB ni límites de bultos por cliente.</div>
+  </footer>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const fmt = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+  const fmt2 = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pctf = (p) => (Math.round(p * 100) / 100).toLocaleString("es-AR") + " %";
+  const qf = (q) => (Math.round(q * 100) / 100).toLocaleString("es-AR");
+  const norm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+  const hoy = (() => { const d = new Date(); const z = new Date(d.getTime() - d.getTimezoneOffset() * 60000); return z.toISOString().slice(0, 10); })();
+  const TOPE = 0.011; // escalas de 0,01 % son topes que Chess usa para cortar el beneficio
+
+  const cache = {};
+  const S = { dist: "lifa", canal: "PREVENTA", D: null, cli: null, lines: [] };
+
+  async function load(dist) {
+    if (cache[dist]) return cache[dist];
+    const r = await fetch("data/" + dist + ".json", { cache: "no-cache" });
+    if (!r.ok) throw new Error("No se pudieron leer los datos de " + dist.toUpperCase() + " (" + r.status + ")");
+    const D = await r.json();
+    D.gpSet = {}; for (const [k, g] of Object.entries(D.gp)) D.gpSet[k] = new Set(g.a);
+    D.gcSet = {}; for (const [k, g] of Object.entries(D.gc)) D.gcSet[k] = new Set(g.c);
+    D.cliIdx = D.clientes.map((c) => ({ c, k: norm(c[0] + " " + c[1] + " " + c[2]) }));
+    D.comboMap = {}; for (const c of D.combos) D.comboMap[c.c] = c;
+    cache[dist] = D;
+    return D;
+  }
+
+  // ---------- reglas de Chess ----------
+  const enGrupo = (D, g, id) => !g || (D.gcSet[g] ? D.gcSet[g].has(id) : false);
+  const califica = (D, obj, id) => enGrupo(D, obj.gc, id) && enGrupo(D, obj.gcc, id);
+  const vigente = (a) => (!a.ini || a.ini <= hoy) && (!a.fin || a.fin >= hoy);
+  const refTiene = (D, ref, codart) => ref[0] === "A" ? +ref.slice(1) === codart : (D.gpSet[ref.slice(1)]?.has(codart) ?? false);
+  const refNombre = (D, ref) => ref[0] === "A" ? (D.articulos[ref.slice(1)]?.[0] || "Art. " + ref.slice(1)) : (D.gp[ref.slice(1)]?.d || "Grupo " + ref.slice(1));
+
+  function accionesCliente() {
+    const D = S.D, id = S.cli?.[0];
+    if (!D || id == null) return { canal: [], otros: [] };
+    const base = D.acciones.filter((a) => vigente(a) && califica(D, a, id));
+    return { canal: base.filter((a) => a.org.includes(S.canal)), otros: base.filter((a) => !a.org.includes(S.canal)) };
+  }
+
+  function lista() { return S.D.listas[String(S.cli[4])]; }
+  function precioDe(codart) { const l = lista(); return l ? l.p[String(codart)] : null; }
+  const bultos = (ln) => (Number(ln.b) || 0) + (Number(ln.u) || 0) / (S.D.articulos[ln.c]?.[1] || 1);
+
+  function calcular() {
+    const D = S.D, acc = accionesCliente().canal;
+    const lines = S.lines.map((ln) => ({ ...ln, q: bultos(ln), pct: 0, apl: [] }));
+    const opps = [];
+    for (const a of acc) {
+      const refsReq = a.req.length ? a.req : [...new Set(a.esc.flatMap((e) => e[1].map((b) => b[0])))];
+      const enReq = lines.filter((l) => refsReq.some((r) => refTiene(D, r, l.c)));
+      const toca = lines.some((l) => a.esc.some((e) => e[1].some((b) => refTiene(D, b[0], l.c))));
+      if (!enReq.length && !toca) continue;
+      const q = enReq.reduce((s, l) => s + l.q, 0);
+      let idx = -1;
+      a.esc.forEach((e, i) => { if (q + 1e-9 >= e[0]) idx = i; });
+      if (idx >= 0) {
+        for (const l of lines) {
+          const p = a.esc[idx][1].filter((b) => refTiene(D, b[0], l.c)).reduce((s, b) => s + b[1], 0);
+          if (p > TOPE) { l.pct += p; l.apl.push({ c: a.c, d: a.d, p }); }
+        }
+      }
+      // proxima escala con beneficio real sobre algun renglon del pedido
+      const next = a.esc.slice(idx + 1).find((e) => e[1].some((b) => b[1] > TOPE && lines.some((l) => refTiene(D, b[0], l.c))));
+      const curP = idx >= 0 ? Math.max(0, ...a.esc[idx][1].filter((b) => lines.some((l) => refTiene(D, b[0], l.c))).map((b) => b[1])) : 0;
+      if (next) {
+        const nP = Math.max(...next[1].filter((b) => lines.some((l) => refTiene(D, b[0], l.c))).map((b) => b[1]));
+        opps.push({ a, q, falta: next[0] - q, nP, curP, done: false });
+      } else if (idx >= 0 && curP > TOPE) {
+        opps.push({ a, q, curP, done: true });
+      }
+    }
+    let totLista = 0, totFinal = 0;
+    for (const l of lines) {
+      const pr = precioDe(l.c);
+      l.pr = pr;
+      if (!pr) continue;
+      const [precio, bonLista, internos, iva] = pr;
+      l.pct = Math.min(l.pct, 100);
+      l.listaB = precio * (1 - bonLista / 100) * (1 + iva) + internos;
+      l.finalB = precio * (1 - bonLista / 100) * (1 - l.pct / 100) * (1 + iva) + internos;
+      l.sub = l.finalB * l.q;
+      totLista += l.listaB * l.q;
+      totFinal += l.sub;
+    }
+    return { lines, opps, totLista, totFinal };
+  }
+
+  // ---------- render ----------
+  function renderFresh() {
+    const D = S.D;
+    if (!D) return;
+    const g = new Date(D.generado);
+    const cuando = isNaN(g) ? D.generado : g.toLocaleString("es-AR", { dateStyle: "medium", timeStyle: "short" });
+    const viejo = D.generado.slice(0, 10) < hoy;
+    $("fresh").innerHTML = "Datos de Chess " + esc(D.nombre) + ": <b>" + esc(cuando) + "</b>" + (viejo ? ' <span class="chip warn">no son de hoy</span>' : "");
+    const lis = Object.entries(D.listas).map(([k, l]) => k + " " + l.titulo + " (desde " + (l.desde || "").slice(0, 10) + ")").join(" · ");
+    $("footData").textContent = D.clientes.length + " clientes · " + D.acciones.length + " acciones · " + D.combos.length + " combos · Listas: " + lis;
+  }
+
+  function renderCli() {
+    const c = S.cli, D = S.D;
+    $("cliCard").hidden = !c; $("cliSearchBox").hidden = !!c; $("cliClear").hidden = !c;
+    $("artQ").disabled = !c; $("accSec").hidden = !c;
+    if (!c) { $("cliQ").value = ""; return; }
+    const l = D.listas[String(c[4])];
+    const { canal, otros } = accionesCliente();
+    const combosOk = D.combos.filter((x) => califica(D, x, c[0]) && (!x.hasta || x.hasta >= hoy)).length;
+    $("cliCard").innerHTML =
+      '<div class="cli"><div style="min-width:0"><div class="name">' + esc(c[2] || c[1]) + '</div>' +
+      '<div class="sub">' + esc(c[1]) + " · " + esc(c[3]) + '</div></div><div class="mono muted">#' + c[0] + '</div>' +
+      '<div class="chips" style="grid-column:1/-1">' +
+      '<span class="chip ' + (l ? "" : "bad") + '">Lista ' + c[4] + (l ? " · " + esc(l.titulo) : " · sin precios cargados") + "</span>" +
+      '<span class="chip">IVA ' + esc(c[5] || "?") + "</span>" +
+      '<span class="chip ' + (c[6] ? "ok" : "warn") + '">' + (c[6] ? "Exento IIBB" : "Percibe IIBB (no incluido)") + "</span>" +
+      '<span class="chip ok">' + canal.length + " acciones en " + esc(S.canal.toLowerCase()) + "</span>" +
+      (otros.length ? '<span class="chip">' + otros.length + " solo en otros canales</span>" : "") +
+      '<span class="chip">' + combosOk + " combos</span></div></div>";
+  }
+
+  function renderLines(res) {
+    const D = S.D;
+    $("vaciar").hidden = !S.lines.length;
+    if (!S.cli) { $("lines").innerHTML = '<div class="empty-state"><b>Elegí un cliente para empezar.</b>Buscalo por código, razón social o nombre de fantasía. Después sumá artículos y vas a ver el precio final con las acciones que le aplican.</div>'; return; }
+    if (!S.lines.length) { $("lines").innerHTML = '<div class="empty-state"><b>El pedido está vacío.</b>Buscá un artículo o combo arriba. Cada renglón muestra el precio de lista, las acciones que se activan y el precio final por bulto y por unidad.</div>'; return; }
+    let h = '<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Cantidad</th><th class="n">Desc.</th><th class="n">Final x bulto</th><th class="n">Subtotal</th><th></th></tr></thead><tbody>';
+    res.lines.forEach((l, i) => {
+      const a = D.articulos[l.c] || ["Artículo " + l.c, 1];
+      const combo = D.comboMap[l.c];
+      h += "<tr><td><div class=\"art\">" + esc(a[0]) + '</div><div class="meta"><span class="mono">' + l.c + "</span> · " + a[1] + " u/bulto" + (combo ? " · combo" : "") + "</div>";
+      if (l.apl.length) h += '<div class="acc-list">' + l.apl.map((x) => '<span class="chip ok" title="Acción ' + x.c + '">' + esc(x.d) + " " + pctf(x.p) + "</span>").join("") + "</div>";
+      if (!l.pr) h += '<div class="acc-list"><span class="chip bad">Sin precio en la lista del cliente</span></div>';
+      h += '</td><td class="qcell"><div class="qty"><input type="number" min="0" step="1" inputmode="numeric" id="b' + i + '" data-i="' + i + '" data-k="b" value="' + (l.b ?? "") + '" aria-label="Bultos"><span>blt</span>' +
+        (a[1] > 1 ? '<input type="number" min="0" step="1" inputmode="numeric" id="u' + i + '" data-i="' + i + '" data-k="u" value="' + (l.u ?? "") + '" aria-label="Unidades sueltas"><span>u</span>' : "") + "</div></td>";
+      if (l.pr) {
+        h += '<td data-l="Desc." class="n ' + (l.pct ? "disc" : "muted") + '">' + (l.pct ? "−" + pctf(l.pct) : "—") + "</td>" +
+          '<td data-l="Final x bulto" class="n"><b>' + fmt.format(l.finalB) + "</b>" + (l.pct ? '<div class="strike">' + fmt.format(l.listaB) + "</div>" : "") +
+          '<div class="unit">' + fmt2.format(l.finalB / (a[1] || 1)) + " x u</div></td>" +
+          '<td data-l="Subtotal" class="n">' + fmt.format(l.sub) + "</td>";
+      } else h += '<td class="n muted">—</td><td></td><td></td>';
+      h += '<td><button type="button" class="rm" data-rm="' + i + '" aria-label="Quitar renglón">×</button></td></tr>';
+    });
+    $("lines").innerHTML = h + "</tbody></table></div>";
+  }
+
+  function renderTot(res) {
+    const n = res.lines.reduce((s, l) => s + l.q, 0);
+    const ahorro = res.totLista - res.totFinal;
+    $("tot").innerHTML = S.lines.length
+      ? '<div class="row"><span class="muted">Bultos</span><span class="num">' + qf(n) + "</span></div>" +
+        '<div class="row"><span class="muted">Total a precio de lista</span><span class="num">' + fmt.format(res.totLista) + "</span></div>" +
+        '<div class="row"><span class="muted">Descuento por acciones</span><span class="num disc">−' + fmt.format(ahorro) + (res.totLista ? " (" + pctf((ahorro / res.totLista) * 100) + ")" : "") + "</span></div>" +
+        '<div class="row final"><span>Total con IVA</span><span class="big num">' + fmt.format(res.totFinal) + "</span></div>"
+      : '<p class="note">Todavía no hay renglones. El total aparece a medida que cargás artículos.</p>';
+    const ops = res.opps.filter((o) => !o.done).sort((a, b) => a.falta - b.falta).slice(0, 6);
+    const done = res.opps.filter((o) => o.done).slice(0, 4);
+    $("oppsWrap").hidden = !(ops.length || done.length);
+    $("opps").innerHTML = ops.map((o) => '<div class="opp"><b>' + esc(o.a.d) + "</b>: sumá <b>" + qf(o.falta) + " bulto" + (o.falta === 1 ? "" : "s") + "</b> de " + esc(refsTexto(o.a)) + " para pasar de " + pctf(o.curP) + " a <b>" + pctf(o.nP) + "</b>.</div>").join("") +
+      done.map((o) => '<div class="opp done"><b>' + esc(o.a.d) + "</b>: " + pctf(o.curP) + " (escala máxima).</div>").join("");
+  }
+  function refsTexto(a) {
+    const refs = a.req.length ? a.req : [...new Set(a.esc.flatMap((e) => e[1].map((b) => b[0])))];
+    const n = refs.map((r) => refNombre(S.D, r));
+    return n.length > 2 ? n.slice(0, 2).join(", ") + " y otros" : n.join(" + ");
+  }
+
+  function renderAcc() {
+    if (!S.cli) return;
+    const { canal } = accionesCliente();
+    const q = norm($("accQ").value);
+    $("accSummary").textContent = "Acciones de este cliente en " + S.canal.toLowerCase() + " (" + canal.length + ")";
+    if (!$("accDetails").open) return;
+    const D = S.D;
+    const list = canal.filter((a) => !q || norm(a.d + " " + a.c + " " + refsTexto(a)).includes(q));
+    $("accList").innerHTML = list.length ? list.map((a) =>
+      '<div class="acc"><div class="h"><span class="t">' + esc(a.d) + '</span><span class="mono muted">' + a.c + '</span><span class="muted" style="font-size:.84rem">hasta ' + esc(a.fin || "—") + '</span></div>' +
+      '<div class="muted" style="font-size:.86rem">Cuenta: ' + esc(refsTexto(a)) + "</div>" +
+      '<div class="esc">' + a.esc.filter((e) => e[1].some((b) => b[1] > TOPE)).map((e) => "<span>desde " + qf(e[0]) + " blt: " + pctf(Math.max(...e[1].map((b) => b[1]))) + "</span>").join("") + "</div></div>"
+    ).join("") : '<p class="note">Ninguna acción coincide con el filtro.</p>';
+  }
+
+  function render() {
+    renderCli();
+    const res = S.cli ? calcular() : { lines: [], opps: [], totLista: 0, totFinal: 0 };
+    renderLines(res); renderTot(res); renderAcc();
+  }
+
+  // ---------- busquedas ----------
+  function wireSearch(input, box, buscar, elegir) {
+    let items = [], sel = 0;
+    const paint = () => {
+      if (!input.value.trim()) { box.hidden = true; return; }
+      items = buscar(norm(input.value.trim()));
+      sel = 0;
+      box.innerHTML = items.length ? items.map((it, i) => '<button type="button" data-i="' + i + '" class="' + (i === sel ? "sel" : "") + '"><span class="code">' + esc(it.code) + '</span><span class="desc">' + esc(it.desc) + '</span><span class="side">' + esc(it.side || "") + "</span></button>").join("") : '<div class="empty">Sin resultados.</div>';
+      box.hidden = false;
+    };
+    input.addEventListener("input", paint);
+    input.addEventListener("focus", paint);
+    input.addEventListener("keydown", (e) => {
+      if (box.hidden || !items.length) return;
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault(); sel = (sel + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length;
+        box.querySelectorAll("button").forEach((b, i) => b.classList.toggle("sel", i === sel));
+        box.querySelectorAll("button")[sel]?.scrollIntoView({ block: "nearest" });
+      } else if (e.key === "Enter") { e.preventDefault(); elegir(items[sel]); input.value = ""; box.hidden = true; }
+      else if (e.key === "Escape") box.hidden = true;
+    });
+    box.addEventListener("mousedown", (e) => e.preventDefault());
+    box.addEventListener("click", (e) => { const b = e.target.closest("button[data-i]"); if (!b) return; elegir(items[+b.dataset.i]); input.value = ""; box.hidden = true; });
+    input.addEventListener("blur", () => setTimeout(() => (box.hidden = true), 120));
+  }
+
+  wireSearch($("cliQ"), $("cliRes"), (q) => {
+    const D = S.D; if (!D) return [];
+    const toks = q.split(/\s+/);
+    const exact = /^\d+$/.test(q) ? D.cliIdx.filter((x) => String(x.c[0]) === q) : [];
+    const rest = D.cliIdx.filter((x) => !exact.includes(x) && toks.every((t) => x.k.includes(t)));
+    return [...exact, ...rest].slice(0, 40).map((x) => ({ code: "#" + x.c[0], desc: (x.c[2] || x.c[1]) + (x.c[2] && x.c[2] !== x.c[1] ? " · " + x.c[1] : ""), side: "Lista " + x.c[4], cli: x.c }));
+  }, (it) => { S.cli = it.cli; S.lines = []; persist(); render(); $("artQ").focus(); });
+
+  wireSearch($("artQ"), $("artRes"), (q) => {
+    const D = S.D, l = S.cli && lista(); if (!l) return [];
+    const toks = q.split(/\s+/);
+    const out = [];
+    for (const [cod, pr] of Object.entries(l.p)) {
+      const a = D.articulos[cod]; if (!a) continue;
+      const combo = D.comboMap[cod];
+      if (combo && !(califica(D, combo, S.cli[0]) && (!combo.hasta || combo.hasta >= hoy))) continue;
+      if (+cod >= 900000 && !combo) continue; // combos viejos que siguen en la lista
+      const k = norm(cod + " " + a[0]);
+      if (!toks.every((t) => k.includes(t))) continue;
+      out.push({ code: cod, desc: a[0], side: (combo ? "combo · " : "") + fmt.format(pr[0] * (1 - pr[1] / 100) * (1 + pr[3]) + pr[2]), c: +cod, exact: cod === q });
+      if (out.length > 300) break;
+    }
+    out.sort((x, y) => (y.exact - x.exact) || x.desc.localeCompare(y.desc));
+    return out.slice(0, 40);
+  }, (it) => {
+    const ex = S.lines.find((l) => l.c === it.c);
+    if (ex) ex.b = (Number(ex.b) || 0) + 1; else S.lines.push({ c: it.c, b: 1, u: 0 });
+    persist(); render();
+  });
+
+  // ---------- eventos ----------
+  $("lines").addEventListener("input", (e) => {
+    const t = e.target; if (!t.dataset.k) return;
+    const v = Math.max(0, Math.floor(Number(t.value) || 0));
+    S.lines[+t.dataset.i][t.dataset.k] = v;
+    persist();
+    const res = calcular(); renderTot(res);
+    // re-render sin perder el foco del input que se esta editando
+    const id = t.id, pos = t.selectionStart;
+    renderLines(res);
+    const n = $(id); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch {} }
+  });
+  $("lines").addEventListener("click", (e) => { const b = e.target.closest("[data-rm]"); if (!b) return; S.lines.splice(+b.dataset.rm, 1); persist(); render(); });
+  $("vaciar").addEventListener("click", () => { S.lines = []; persist(); render(); });
+  $("cliClear").addEventListener("click", () => { S.cli = null; S.lines = []; persist(); render(); setTimeout(() => $("cliQ").focus(), 0); });
+  $("canal").addEventListener("change", (e) => { S.canal = e.target.value; persist(); render(); });
+  $("accQ").addEventListener("input", renderAcc);
+  $("accDetails").addEventListener("toggle", renderAcc);
+  $("distSeg").addEventListener("click", (e) => { const b = e.target.closest("button[data-dist]"); if (b && b.dataset.dist !== S.dist) setDist(b.dataset.dist, true); });
+
+  function persist() { store.set("sim-pedidos", { dist: S.dist, canal: S.canal, cli: S.cli?.[0] ?? null, lines: S.lines }); }
+
+  async function setDist(dist, reset) {
+    S.dist = dist;
+    document.querySelectorAll("#distSeg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.dist === dist)));
+    $("fresh").textContent = "Cargando datos de Chess…";
+    try {
+      S.D = await load(dist);
+      $("loadErr").hidden = true;
+    } catch (err) {
+      S.D = null; $("loadErr").textContent = err.message + ". Probá recargar la página."; $("loadErr").hidden = false;
+      $("fresh").textContent = "Sin datos";
+    }
+    if (reset) { S.cli = null; S.lines = []; persist(); }
+    renderFresh(); render();
+  }
+
+  (async () => {
+    const saved = store.get("sim-pedidos") || {};
+    if (saved.canal) { S.canal = saved.canal; $("canal").value = saved.canal; }
+    await setDist(saved.dist === "delorenzi" ? "delorenzi" : "lifa", false);
+    if (S.D && saved.cli != null) {
+      S.cli = S.D.clientes.find((c) => c[0] === saved.cli) || null;
+      if (S.cli) S.lines = (saved.lines || []).filter((l) => S.D.articulos[l.c]);
+      render();
+    }
+  })();
+})();
+</script>
