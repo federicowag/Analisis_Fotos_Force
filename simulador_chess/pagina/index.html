@@ -217,13 +217,13 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
         <h3 style="font-size:.95rem;text-transform:uppercase;letter-spacing:.06em">Escalas</h3>
         <div class="opps" id="opps"></div>
       </div>
-      <p class="note" id="calcNote">Precio final = lista × (1 − suma de % de acciones) × (1 + IVA) + impuestos internos. Es una simulación: el precio definitivo lo calcula Chess al controlar el pedido.</p>
+      <p class="note" id="calcNote">Precio final = (lista × (1 + IVA) + internos) × (1 − suma de % de acciones). No incluye percepciones de IVA/IIBB ni precios negociados en BEES. Es una simulación: el precio definitivo lo calcula Chess al controlar el pedido.</p>
     </aside>
   </div>
 
   <footer class="foot">
     <div id="footData"></div>
-    <div>Solo lectura: la página no carga pedidos en Chess. No incluye percepciones de IIBB ni límites de bultos por cliente.</div>
+    <div>Solo lectura: la página no carga pedidos en Chess. No incluye percepciones de IVA/IIBB, límites de bultos por cliente ni precios negociados por BEES (promo "NEGOCIACION").</div>
   </footer>
 </div>
 
@@ -314,7 +314,8 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
       const [precio, bonLista, internos, iva] = pr;
       l.pct = Math.min(l.pct, 100);
       l.listaB = precio * (1 - bonLista / 100) * (1 + iva) + internos;
-      l.finalB = precio * (1 - bonLista / 100) * (1 - l.pct / 100) * (1 + iva) + internos;
+      // Chess descuenta los internos con el mismo % que el neto (verificado contra pedidos reales)
+      l.finalB = l.listaB * (1 - l.pct / 100);
       l.sub = l.finalB * l.q;
       totLista += l.listaB * l.q;
       totFinal += l.sub;

@@ -44,9 +44,13 @@ queda listado en `avisos.gp_aproximados`.
 - La escala se elige por la suma de bultos del pedido en el grupo de requerimiento
   (unidades sueltas cuentan como fracción de bulto).
 - Todas las acciones de estas instancias tienen `bonifica = SUMA`: los % se suman.
-- Precio final por bulto = precio × (1 − bonif. lista) × (1 − Σ %) × (1 + IVA) + internos.
-  Sin acciones, la fórmula reproduce exactamente el `prefin` de Chess.
-- No incluye percepción de IIBB ni límites de bultos por cliente.
+- Precio final por bulto = (precio × (1 − bonif. lista) × (1 + IVA) + internos) × (1 − Σ %).
+  Chess descuenta los impuestos internos con el mismo % que el neto (verificado contra
+  pedidos reales). Sin acciones, la fórmula reproduce exactamente el `prefin` de Chess.
+- No incluye percepciones (IVA adicional e IIBB, 3 % + 3 % en RI de Entre Ríos), límites
+  de bultos por cliente ni los precios que BEES negocia por cliente: esos llegan a Chess
+  como promo "NEGOCIACION" (códigos 6xxx/7xxx) con el precio ya modificado y no están en
+  el maestro de acciones.
 
 ## Correrlo a mano
 
