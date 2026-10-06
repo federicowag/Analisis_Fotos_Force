@@ -17,6 +17,8 @@ function App() {
   const [loadedImageUrl, setLoadedImageUrl] = useState("");
   const [lastMark, setLastMark] = useState(null);
   const [slowImageUrl, setSlowImageUrl] = useState("");
+  const [baseType, setBaseType] = useState("force");
+  const [loadingFile, setLoadingFile] = useState(false);
 
   const lastMarkAt = useRef(0);
 
@@ -84,6 +86,8 @@ function App() {
   const getImageUrl = (row) => {
     return normalize(
       getColumn(row, [
+        "TaskImageUrl",
+        "Imagen URL",
         "Imagen",
         "textoUrl",
         "link",
@@ -104,6 +108,7 @@ function App() {
         "promotor",
         "PROMOTOR",
         "ROL_PROMOTOR",
+        "Repositor",
         "Ejecutor",
         "Usuario",
       ])
@@ -115,12 +120,20 @@ function App() {
       "Distri/Directa",
       "distribuidor",
       "DISTRIBUIDOR",
+      "Cadena",
       "desc_ddc_wh",
     ]);
   };
 
   const getPocId = (row) => {
-    return getColumn(row, ["POC ID", "cliente_id", "cliente", "BdrId", "PDV"]);
+    return getColumn(row, [
+      "POC ID",
+      "Tienda",
+      "cliente_id",
+      "cliente",
+      "BdrId",
+      "PDV",
+    ]);
   };
 
   const getDetalleTarea = (row) => {
@@ -128,7 +141,63 @@ function App() {
   };
 
   const getIdTarea = (row) => {
-    return getColumn(row, ["ID Tarea", "id_tarea", "TaskId", "Task Id"]);
+    return getColumn(row, ["ID Tarea", "Task ID", "id_tarea", "TaskId"]);
+  };
+
+  const getJustificacion = (row) => {
+    return getColumn(row, [
+      "Justificacion",
+      "Justificación",
+      "justificacion",
+      "Justificada",
+      "justificada",
+    ]);
+  };
+
+  const getVisitaValida = (row) => {
+    return getColumn(row, [
+      "Visita Valida",
+      "visita valida",
+      "VISITA VALIDA",
+      "Visita Válida",
+    ]);
+  };
+
+  // Cada base trae estos campos en un formato distinto: numero, booleano
+  // o texto. Se normaliza todo antes de comparar.
+  const NEGATIVOS = ["", "0", "FALSE", "NO", "-"];
+  const POSITIVOS = ["1", "TRUE", "SI", "SÍ"];
+
+  // Force trae Justificacion como 0/1, supermercado una columna Justificada
+  // tambien 0/1, y otros exports el texto de la justificación.
+  const estaJustificada = (row) => {
+    const value = upper(getJustificacion(row));
+
+    if (NEGATIVOS.includes(value)) return false;
+    if (POSITIVOS.includes(value)) return true;
+
+    return value !== "SIN JUSTIFICACION" && value !== "SIN JUSTIFICACIÓN";
+  };
+
+  // Force marca la visita con TRUE/FALSE y supermercado con el texto VALIDA.
+  const tieneVisitaValida = (row) => {
+    const value = upper(getVisitaValida(row));
+
+    return (
+      POSITIVOS.includes(value) || value === "VALIDA" || value === "VÁLIDA"
+    );
+  };
+
+  // La base de supermercado usa Repositor y Tienda donde la habitual usa
+  // Promotor y POC ID. Alcanza con mirar los encabezados para reconocerla.
+  const detectBaseType = (row) => {
+    if (!row) return "force";
+
+    const keys = Object.keys(row).map((k) => upper(k));
+    const esSupermercado =
+      keys.includes("REPOSITOR") || keys.includes("TIENDA");
+
+    return esSupermercado ? "supermercado" : "force";
   };
 
   const isCandidate = (row) => {
@@ -138,37 +207,13 @@ function App() {
     const validada =
       Number(getColumn(row, ["Validada", "validada"])) || 0;
 
-    const justificacion = upper(
-      getColumn(row, ["Justificacion", "Justificación", "justificacion"])
-    );
-
-    const visitaValida =
-      Number(
-        getColumn(row, [
-          "Visita Valida",
-          "visita valida",
-          "VISITA VALIDA",
-          "Visita Válida",
-        ])
-      ) || 0;
-
-    const imageUrl = getImageUrl(row);
-
     const tareaCompletadaNoValidada = completada === 1 && validada === 0;
-
-    const noEstaJustificada =
-      !justificacion ||
-      justificacion === "SIN JUSTIFICACION" ||
-      justificacion === "SIN JUSTIFICACIÓN" ||
-      justificacion === "0";
-
-    const tieneVisitaValida = visitaValida === 1;
-    const tieneImagen = imageUrl.startsWith("http");
+    const tieneImagen = getImageUrl(row).startsWith("http");
 
     return (
       tareaCompletadaNoValidada &&
-      noEstaJustificada &&
-      tieneVisitaValida &&
+      !estaJustificada(row) &&
+      tieneVisitaValida(row) &&
       tieneImagen
     );
   };
@@ -177,62 +222,59 @@ function App() {
     const file = event.target.files[0];
     if (!file) return;
 
-    setFileName(file.name);
-
     const newFileKey = `${file.name}_${file.size}_${file.lastModified}`;
-    setFileKey(newFileKey);
 
-    const data = await file.arrayBuffer();
-    const workbook = XLSX.read(data);
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+    setLoadingFile(true);
 
-    const tagged = json.map((row, index) => ({
-      ...row,
-      __id: `fila-${index}`,
-      __fila_original: index + 2,
-    }));
+    try {
+      // El parseo de un archivo grande bloquea el hilo: se le da un respiro
+      // al navegador para que alcance a pintar el cartel de "Procesando".
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const prepared = tagged.filter(isCandidate);
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
 
-    setAllRows(tagged);
+      const tagged = json.map((row, index) => ({
+        ...row,
+        __id: `fila-${index}`,
+        __fila_original: index + 2,
+      }));
 
-    const savedProgress = localStorage.getItem(getStorageKey(newFileKey));
+      const prepared = tagged.filter(isCandidate);
 
-    if (savedProgress) {
-      try {
-        const parsed = JSON.parse(savedProgress);
+      const savedProgress = localStorage.getItem(getStorageKey(newFileKey));
 
-        setRows(prepared);
-        setDecisions(parsed.decisions || {});
-        setCurrentIndex(parsed.currentIndex || 0);
-        setStatusFilter(parsed.statusFilter || "pendientes");
-        setPromotorFilter(parsed.promotorFilter || "todos");
-        setFechaExcluidas(parsed.fechaExcluidas || []);
-        setSearch(parsed.search || "");
-        setLastSaved(parsed.savedAt || "");
-        setLastMark(null);
-      } catch {
-        setRows(prepared);
-        setCurrentIndex(0);
-        setDecisions({});
-        setStatusFilter("pendientes");
-        setPromotorFilter("todos");
-        setFechaExcluidas([]);
-        setSearch("");
-        setLastSaved("");
-        setLastMark(null);
+      let parsed = null;
+
+      if (savedProgress) {
+        try {
+          parsed = JSON.parse(savedProgress);
+        } catch {
+          parsed = null;
+        }
       }
-    } else {
+
+      // Todo el estado se cambia junto y recien al final. Si la clave del
+      // archivo se cambiara antes, el guardado automatico llegaria a grabar
+      // las decisiones del archivo anterior bajo la clave del nuevo.
+      setFileName(file.name);
+      setFileKey(newFileKey);
+      setBaseType(detectBaseType(json[0]));
+      setAllRows(tagged);
       setRows(prepared);
-      setCurrentIndex(0);
-      setDecisions({});
-      setStatusFilter("pendientes");
-      setPromotorFilter("todos");
-      setFechaExcluidas([]);
-      setSearch("");
-      setLastSaved("");
+      setDecisions(parsed?.decisions || {});
+      setCurrentIndex(parsed?.currentIndex || 0);
+      setStatusFilter(parsed?.statusFilter || "pendientes");
+      setPromotorFilter(parsed?.promotorFilter || "todos");
+      setFechaExcluidas(parsed?.fechaExcluidas || []);
+      setSearch(parsed?.search || "");
+      setLastSaved(parsed?.savedAt || "");
       setLastMark(null);
+    } finally {
+      setLoadingFile(false);
+      event.target.value = "";
     }
   };
 
@@ -595,6 +637,17 @@ function App() {
     setCurrentIndex(0);
   };
 
+  const esSupermercado = baseType === "supermercado";
+
+  const labels = {
+    base: esSupermercado ? "Supermercados" : "Force",
+    promotor: esSupermercado ? "Repositor" : "Promotor",
+    promotorPlural: esSupermercado ? "repositores" : "promotores",
+    cliente: esSupermercado ? "Tienda" : "Cliente / POC",
+    distribuidor: esSupermercado ? "Cadena" : "Distribuidor",
+    variable: esSupermercado ? "Marca familia" : "Variable",
+  };
+
   const decisionLabel = (decision) => {
     if (decision === "correcto") return "Correcto / reclamar";
     if (decision === "incorrecto") return "Incorrecto / no reclamar";
@@ -617,16 +670,29 @@ function App() {
           <h1>Analisis Fotos Force</h1>
         </div>
 
-        <label className="uploadButton">
-          Cargar Excel
-          <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} />
+        <label
+          className={`uploadButton${loadingFile ? " uploadButtonBusy" : ""}`}
+        >
+          {loadingFile ? "Procesando..." : "Cargar Excel"}
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            disabled={loadingFile}
+            onChange={handleFile}
+          />
         </label>
       </header>
 
       <section className="panel">
-        {fileName ? (
+        {loadingFile ? (
+          <p className="file processing">
+            <span className="spinner" />
+            Procesando archivo... en bases grandes puede tardar unos segundos.
+          </p>
+        ) : fileName ? (
           <p className="file">
             Archivo cargado: {fileName}
+            <span className="baseTag">Base {labels.base}</span>
             {lastSaved && (
               <span className="savedText">
                 {" "}
@@ -653,7 +719,7 @@ function App() {
               <label>Buscar</label>
               <input
                 type="text"
-                placeholder="Cliente, tarea, distribuidor, POC..."
+                placeholder={`${labels.cliente}, tarea, ${labels.distribuidor}...`}
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -663,7 +729,7 @@ function App() {
             </div>
 
             <div className="filterGroup">
-              <label>Promotor</label>
+              <label>{labels.promotor}</label>
               <select
                 value={promotorFilter}
                 onChange={(e) => {
@@ -671,7 +737,7 @@ function App() {
                   setCurrentIndex(0);
                 }}
               >
-                <option value="todos">Todos los promotores</option>
+                <option value="todos">Todos los {labels.promotorPlural}</option>
                 {promotores.map((promotor) => (
                   <option key={promotor} value={promotor}>
                     {promotor}
@@ -862,11 +928,11 @@ function App() {
                   value={getExecutionDate(current)}
                 />
 
-                <Info label="Distribuidor" value={getDistribuidor(current)} />
+                <Info label={labels.distribuidor} value={getDistribuidor(current)} />
 
-                <Info label="Promotor" value={getPromotor(current)} />
+                <Info label={labels.promotor} value={getPromotor(current)} />
 
-                <Info label="Cliente / POC" value={getPocId(current)} />
+                <Info label={labels.cliente} value={getPocId(current)} />
 
                 <Info
                   label="Nombre cliente"
@@ -881,12 +947,13 @@ function App() {
                 <Info label="Tarea" value={getDetalleTarea(current)} wide />
 
                 <Info
-                  label="Variable"
+                  label={labels.variable}
                   value={getColumn(current, [
                     "Variable de la Liga",
                     "VARIABLE_DE_LA_LIGA",
                     "variable",
                     "PILAR",
+                    "Marca Familia",
                   ])}
                 />
 
@@ -902,18 +969,12 @@ function App() {
 
                 <Info
                   label="Visita válida"
-                  value={getColumn(current, [
-                    "Visita Valida",
-                    "Visita Válida",
-                  ])}
+                  value={getVisitaValida(current)}
                 />
 
                 <Info
                   label="Justificación"
-                  value={getColumn(current, [
-                    "Justificacion",
-                    "Justificación",
-                  ])}
+                  value={getJustificacion(current)}
                   wide
                 />
               </div>

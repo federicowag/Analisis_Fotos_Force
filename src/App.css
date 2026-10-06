@@ -519,6 +519,32 @@ button:active {
   box-shadow: none;
 }
 
+.uploadButtonBusy {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.processing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #475569;
+}
+
+.baseTag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e0e7ff;
+  color: #3730a3;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  vertical-align: middle;
+}
+
 .lastMark {
   display: flex;
   align-items: center;
