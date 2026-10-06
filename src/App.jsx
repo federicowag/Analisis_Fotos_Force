@@ -2,6 +2,76 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import "./App.css";
 
+const FECHAS_COMUNES = [
+      "Fecha Ejecucion",
+      "Fecha Ejecución",
+      "Fecha",
+      "fecha",
+      "Dia",
+      "Día",
+      "Created At",
+      "created_at",
+      "Fecha Completada",
+      "Fecha de ejecución",
+    ];
+
+const BASES = {
+  kt: {
+    nombre: "K+T",
+    descripcion: "Promotores · base habitual",
+    // Encabezados que identifican el archivo, para avisar si no coincide
+    // con lo que se eligió.
+    firma: ["PROMOTOR", "POC ID", "DISTRI/DIRECTA"],
+    etiquetas: {
+      promotor: "Promotor",
+      promotorPlural: "promotores",
+      cliente: "Cliente / POC",
+      distribuidor: "Distribuidor",
+      variable: "Variable",
+    },
+    columnas: {
+      fecha: FECHAS_COMUNES,
+      promotor: ["Promotor", "ROL_PROMOTOR", "Ejecutor", "Usuario"],
+      distribuidor: ["Distri/Directa", "Distribuidor", "desc_ddc_wh"],
+      cliente: ["POC ID", "cliente_id", "cliente", "PDV"],
+      tarea: ["Detalle Tarea", "Tarea"],
+      idTarea: ["ID Tarea", "TaskId", "id_tarea"],
+      imagen: ["TaskImageUrl", "Imagen", "Img", "textoUrl", "url"],
+      completada: ["Completada"],
+      validada: ["Validada"],
+      justificacion: ["Justificacion", "Justificación"],
+      visita: ["Visita Valida", "Visita Válida"],
+      variable: ["Variable de la Liga", "VARIABLE_DE_LA_LIGA", "PILAR"],
+    },
+  },
+  smk: {
+    nombre: "SMK",
+    descripcion: "Repositores · supermercados",
+    firma: ["REPOSITOR", "TIENDA", "CADENA"],
+    etiquetas: {
+      promotor: "Repositor",
+      promotorPlural: "repositores",
+      cliente: "Tienda",
+      distribuidor: "Cadena",
+      variable: "Marca familia",
+    },
+    columnas: {
+      fecha: FECHAS_COMUNES,
+      promotor: ["Repositor"],
+      distribuidor: ["Cadena"],
+      cliente: ["Tienda"],
+      tarea: ["Tarea", "Detalle Tarea"],
+      idTarea: ["Task ID", "TaskId", "ID Tarea"],
+      imagen: ["Imagen URL", "TaskImageUrl", "URL"],
+      completada: ["Completada"],
+      validada: ["Validada"],
+      justificacion: ["Justificada", "Justificacion"],
+      visita: ["Visita Valida", "Visita Válida"],
+      variable: ["Marca Familia"],
+    },
+  },
+};
+
 function App() {
   const [rows, setRows] = useState([]);
   const [allRows, setAllRows] = useState([]);
@@ -17,7 +87,14 @@ function App() {
   const [loadedImageUrl, setLoadedImageUrl] = useState("");
   const [lastMark, setLastMark] = useState(null);
   const [slowImageUrl, setSlowImageUrl] = useState("");
-  const [baseType, setBaseType] = useState("force");
+  const [baseType, setBaseType] = useState(() => {
+    try {
+      return localStorage.getItem("revisor_bees_force_base") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [baseWarning, setBaseWarning] = useState("");
   const [loadingFile, setLoadingFile] = useState(false);
 
   const lastMarkAt = useRef(0);
@@ -61,115 +138,29 @@ function App() {
     return normalize(value);
   };
 
-  const getExecutionDate = (row) => {
-    const value = getColumn(row, [
-      "Fecha Ejecucion",
-      "Fecha Ejecución",
-      "fecha ejecucion",
-      "fecha ejecución",
-      "Fecha",
-      "fecha",
-      "Dia",
-      "Día",
-      "dia",
-      "día",
-      "Created At",
-      "created_at",
-      "Fecha Completada",
-      "Fecha de ejecución",
-      "Fecha de Ejecución",
-    ]);
+  const base = BASES[baseType] || BASES.kt;
+  const labels = base.etiquetas;
 
-    return formatDateValue(value);
-  };
+  const col = (row, campo) => getColumn(row, base.columnas[campo]);
 
-  const getImageUrl = (row) => {
-    return normalize(
-      getColumn(row, [
-        "TaskImageUrl",
-        "Imagen URL",
-        "Imagen",
-        "textoUrl",
-        "link",
-        "imagen",
-        "foto",
-        "url",
-        "evidencia",
-        "image",
-        "photo",
-      ])
-    );
-  };
-
-  const getPromotor = (row) => {
-    return normalize(
-      getColumn(row, [
-        "Promotor",
-        "promotor",
-        "PROMOTOR",
-        "ROL_PROMOTOR",
-        "Repositor",
-        "Ejecutor",
-        "Usuario",
-      ])
-    );
-  };
-
-  const getDistribuidor = (row) => {
-    return getColumn(row, [
-      "Distri/Directa",
-      "distribuidor",
-      "DISTRIBUIDOR",
-      "Cadena",
-      "desc_ddc_wh",
-    ]);
-  };
-
-  const getPocId = (row) => {
-    return getColumn(row, [
-      "POC ID",
-      "Tienda",
-      "cliente_id",
-      "cliente",
-      "BdrId",
-      "PDV",
-    ]);
-  };
-
-  const getDetalleTarea = (row) => {
-    return getColumn(row, ["Detalle Tarea", "Tarea", "tarea", "TAREA"]);
-  };
-
-  const getIdTarea = (row) => {
-    return getColumn(row, ["ID Tarea", "Task ID", "id_tarea", "TaskId"]);
-  };
-
-  const getJustificacion = (row) => {
-    return getColumn(row, [
-      "Justificacion",
-      "Justificación",
-      "justificacion",
-      "Justificada",
-      "justificada",
-    ]);
-  };
-
-  const getVisitaValida = (row) => {
-    return getColumn(row, [
-      "Visita Valida",
-      "visita valida",
-      "VISITA VALIDA",
-      "Visita Válida",
-    ]);
-  };
+  const getExecutionDate = (row) => formatDateValue(col(row, "fecha"));
+  const getImageUrl = (row) => normalize(col(row, "imagen"));
+  const getPromotor = (row) => normalize(col(row, "promotor"));
+  const getDistribuidor = (row) => col(row, "distribuidor");
+  const getPocId = (row) => col(row, "cliente");
+  const getDetalleTarea = (row) => col(row, "tarea");
+  const getIdTarea = (row) => col(row, "idTarea");
+  const getJustificacion = (row) => col(row, "justificacion");
+  const getVisitaValida = (row) => col(row, "visita");
+  const getVariable = (row) => col(row, "variable");
 
   // Cada base trae estos campos en un formato distinto: numero, booleano
   // o texto. Se normaliza todo antes de comparar.
   const NEGATIVOS = ["", "0", "FALSE", "NO", "-"];
   const POSITIVOS = ["1", "TRUE", "SI", "SÍ"];
 
-  // Force trae Justificacion como 0/1, supermercado una columna Justificada
-  // tambien 0/1, y otros exports el texto de la justificación.
+  // K+T trae Justificacion como 0/1, SMK una columna Justificada tambien
+  // 0/1, y otros exports el texto de la justificación.
   const estaJustificada = (row) => {
     const value = upper(getJustificacion(row));
 
@@ -179,7 +170,7 @@ function App() {
     return value !== "SIN JUSTIFICACION" && value !== "SIN JUSTIFICACIÓN";
   };
 
-  // Force marca la visita con TRUE/FALSE y supermercado con el texto VALIDA.
+  // K+T marca la visita con TRUE/FALSE y SMK con el texto VALIDA.
   const tieneVisitaValida = (row) => {
     const value = upper(getVisitaValida(row));
 
@@ -188,24 +179,21 @@ function App() {
     );
   };
 
-  // La base de supermercado usa Repositor y Tienda donde la habitual usa
-  // Promotor y POC ID. Alcanza con mirar los encabezados para reconocerla.
+  // Se mira el archivo para avisar si no es del tipo que se eligió.
   const detectBaseType = (row) => {
-    if (!row) return "force";
+    if (!row) return "";
 
     const keys = Object.keys(row).map((k) => upper(k));
-    const esSupermercado =
-      keys.includes("REPOSITOR") || keys.includes("TIENDA");
+    const encontrada = Object.keys(BASES).find((key) =>
+      BASES[key].firma.some((name) => keys.includes(name))
+    );
 
-    return esSupermercado ? "supermercado" : "force";
+    return encontrada || "";
   };
 
   const isCandidate = (row) => {
-    const completada =
-      Number(getColumn(row, ["Completada", "completada"])) || 0;
-
-    const validada =
-      Number(getColumn(row, ["Validada", "validada"])) || 0;
+    const completada = Number(col(row, "completada")) || 0;
+    const validada = Number(col(row, "validada")) || 0;
 
     const tareaCompletadaNoValidada = completada === 1 && validada === 0;
     const tieneImagen = getImageUrl(row).startsWith("http");
@@ -259,9 +247,16 @@ function App() {
       // Todo el estado se cambia junto y recien al final. Si la clave del
       // archivo se cambiara antes, el guardado automatico llegaria a grabar
       // las decisiones del archivo anterior bajo la clave del nuevo.
+      const detectada = detectBaseType(json[0]);
+
+      setBaseWarning(
+        detectada && detectada !== baseType
+          ? `El archivo parece de ${BASES[detectada].nombre} y está seleccionado ${base.nombre}. Revisá que sea el archivo correcto o cambiá el tipo de base.`
+          : ""
+      );
+
       setFileName(file.name);
       setFileKey(newFileKey);
-      setBaseType(detectBaseType(json[0]));
       setAllRows(tagged);
       setRows(prepared);
       setDecisions(parsed?.decisions || {});
@@ -315,7 +310,7 @@ function App() {
     });
 
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
+  }, [rows, baseType]);
 
   const fechaSortKey = (label) => {
     const [d, m, y] = label.split("/");
@@ -334,7 +329,7 @@ function App() {
     return Array.from(set).sort((a, b) =>
       fechaSortKey(a).localeCompare(fechaSortKey(b))
     );
-  }, [rows]);
+  }, [rows, baseType]);
 
   const fechaResumen =
     fechaExcluidas.length === 0
@@ -372,7 +367,15 @@ function App() {
 
       return matchesStatus && matchesPromotor && matchesFecha && matchesSearch;
     });
-  }, [rows, decisions, statusFilter, promotorFilter, fechaExcluidas, search]);
+  }, [
+    rows,
+    decisions,
+    statusFilter,
+    promotorFilter,
+    fechaExcluidas,
+    search,
+    baseType,
+  ]);
 
   const current =
     filteredRows.length > 0
@@ -629,23 +632,47 @@ function App() {
     setCurrentIndex((prev) => Math.min(prev + 1, filteredRows.length - 1));
   };
 
+  const selectBase = (key) => {
+    if (key === baseType) return;
+
+    // Las columnas se leen segun el tipo de base, asi que hay que volver a
+    // procesar el Excel con el mapeo nuevo.
+    if (rows.length > 0) {
+      const seguir = window.confirm(
+        "Cambiar el tipo de base vacía lo cargado y hay que volver a subir el Excel. El progreso guardado de cada archivo se conserva. ¿Seguimos?"
+      );
+
+      if (!seguir) return;
+    }
+
+    setBaseType(key);
+    setBaseWarning("");
+    setFileName("");
+    setFileKey("");
+    setAllRows([]);
+    setRows([]);
+    setDecisions({});
+    setCurrentIndex(0);
+    setStatusFilter("pendientes");
+    setPromotorFilter("todos");
+    setFechaExcluidas([]);
+    setSearch("");
+    setLastSaved("");
+    setLastMark(null);
+
+    try {
+      localStorage.setItem("revisor_bees_force_base", key);
+    } catch {
+      // Si el navegador no deja guardar, se sigue igual.
+    }
+  };
+
   const resetFilters = () => {
     setStatusFilter("pendientes");
     setPromotorFilter("todos");
     setFechaExcluidas([]);
     setSearch("");
     setCurrentIndex(0);
-  };
-
-  const esSupermercado = baseType === "supermercado";
-
-  const labels = {
-    base: esSupermercado ? "Supermercados" : "Force",
-    promotor: esSupermercado ? "Repositor" : "Promotor",
-    promotorPlural: esSupermercado ? "repositores" : "promotores",
-    cliente: esSupermercado ? "Tienda" : "Cliente / POC",
-    distribuidor: esSupermercado ? "Cadena" : "Distribuidor",
-    variable: esSupermercado ? "Marca familia" : "Variable",
   };
 
   const decisionLabel = (decision) => {
@@ -670,17 +697,39 @@ function App() {
           <h1>Analisis Fotos Force</h1>
         </div>
 
-        <label
-          className={`uploadButton${loadingFile ? " uploadButtonBusy" : ""}`}
-        >
-          {loadingFile ? "Procesando..." : "Cargar Excel"}
-          <input
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            disabled={loadingFile}
-            onChange={handleFile}
-          />
-        </label>
+        <div className="headerActions">
+          <div className="baseSwitch">
+            <span className="baseSwitchLabel">Tipo de base</span>
+
+            <div className="baseSwitchButtons">
+              {Object.keys(BASES).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={baseType === key ? "active" : undefined}
+                  title={BASES[key].descripcion}
+                  onClick={() => selectBase(key)}
+                >
+                  {BASES[key].nombre}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label
+            className={`uploadButton${loadingFile ? " uploadButtonBusy" : ""}${
+              baseType ? "" : " uploadButtonOff"
+            }`}
+          >
+            {loadingFile ? "Procesando..." : "Cargar Excel"}
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              disabled={loadingFile || !baseType}
+              onChange={handleFile}
+            />
+          </label>
+        </div>
       </header>
 
       <section className="panel">
@@ -689,10 +738,15 @@ function App() {
             <span className="spinner" />
             Procesando archivo... en bases grandes puede tardar unos segundos.
           </p>
+        ) : !baseType ? (
+          <p className="file muted">
+            Elegí primero el tipo de base, K+T o SMK, para habilitar la carga
+            del Excel.
+          </p>
         ) : fileName ? (
           <p className="file">
             Archivo cargado: {fileName}
-            <span className="baseTag">Base {labels.base}</span>
+            <span className="baseTag">Base {base.nombre}</span>
             {lastSaved && (
               <span className="savedText">
                 {" "}
@@ -701,7 +755,15 @@ function App() {
             )}
           </p>
         ) : (
-          <p className="file muted">Todavía no cargaste ningún archivo.</p>
+          <p className="file muted">
+            Base {base.nombre} seleccionada. Cargá el Excel para comenzar.
+          </p>
+        )}
+
+        {baseWarning && (
+          <p className="baseWarning">
+            <span>⚠</span> {baseWarning}
+          </p>
         )}
 
         <div className="stats">
@@ -946,26 +1008,11 @@ function App() {
 
                 <Info label="Tarea" value={getDetalleTarea(current)} wide />
 
-                <Info
-                  label={labels.variable}
-                  value={getColumn(current, [
-                    "Variable de la Liga",
-                    "VARIABLE_DE_LA_LIGA",
-                    "variable",
-                    "PILAR",
-                    "Marca Familia",
-                  ])}
-                />
+                <Info label={labels.variable} value={getVariable(current)} />
 
-                <Info
-                  label="Completada"
-                  value={getColumn(current, ["Completada"])}
-                />
+                <Info label="Completada" value={col(current, "completada")} />
 
-                <Info
-                  label="Validada"
-                  value={getColumn(current, ["Validada"])}
-                />
+                <Info label="Validada" value={col(current, "validada")} />
 
                 <Info
                   label="Visita válida"
@@ -988,9 +1035,9 @@ function App() {
         </div>
       ) : (
         <div className="empty">
-          Cargá el archivo Excel para comenzar. La herramienta buscará tareas
-          completadas, no validadas, sin justificación, con visita válida e
-          imagen disponible.
+          {baseType
+            ? `Cargá el Excel de ${base.nombre} para comenzar. La herramienta buscará tareas completadas, no validadas, sin justificación, con visita válida e imagen disponible.`
+            : "Elegí el tipo de base, K+T para la base habitual de promotores o SMK para la de supermercados, y después cargá el Excel."}
         </div>
       )}
 
