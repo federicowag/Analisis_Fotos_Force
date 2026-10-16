@@ -58,6 +58,9 @@ queda listado en `avisos.gp_aproximados`.
   del mismo artículo. Sirve para simular las negociaciones por cliente (promo "NEGOCIACION",
   códigos 6xxx/7xxx), que no están en el maestro de acciones. Validado con el pedido BEES
   462486 de DELORENZI: cargando los % negociados, el total coincide con el de Chess.
+  El campo "% manual para todo el pedido" copia un % a todos los renglones (que después se
+  pueden ajustar uno por uno); los artículos que se agregan después lo toman solos. Se
+  limpia al cambiar de cliente o de distribuidora.
 - No incluye límites de bultos por cliente.
 
 ## Correrlo a mano

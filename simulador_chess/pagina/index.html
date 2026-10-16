@@ -102,6 +102,12 @@ td .meta { font-size: .8rem; color: var(--muted); }
 td input[type="number"] { width: 58px; text-align: right; padding: 5px 6px; }
 .qty { display: flex; gap: 6px; align-items: center; }
 .qcol { display: grid; gap: 6px; }
+.bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 12px; background: var(--bg); border-radius: var(--r); font-size: .9rem; }
+.bulk label { color: var(--muted); }
+.bulk input { width: 64px; text-align: right; padding: 6px 8px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; }
+.bulk .note { flex-basis: 100%; margin: 0; }
+.btn { border: 1px solid var(--ink); background: var(--ink); color: var(--paper); border-radius: 6px; padding: 6px 12px; font-family: var(--font-display); font-weight: 600; letter-spacing: .03em; cursor: pointer; }
+.btn:disabled { opacity: .45; cursor: default; }
 td input.man { width: 58px; text-align: right; padding: 5px 6px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; }
 td input.man.on { border-color: var(--warn); background: var(--warn-soft); color: var(--warn); font-weight: 600; }
 .qty span { font-size: .72rem; color: var(--muted); }
@@ -200,6 +206,13 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
           <input type="search" id="artQ" placeholder="Buscar artículo o combo por código o descripción" autocomplete="off" aria-label="Buscar artículo" disabled>
           <div class="results" id="artRes" hidden></div>
         </div>
+        <div class="bulk" id="bulk" hidden>
+          <label for="mAll">% manual para todo el pedido</label>
+          <input type="text" inputmode="decimal" autocomplete="off" id="mAll" placeholder="0" aria-describedby="mAllNote">
+          <button type="button" class="btn" id="mAllApply" disabled>Aplicar a todos</button>
+          <button type="button" class="link" id="mAllClear" hidden>Quitar descuentos manuales</button>
+          <p class="note" id="mAllNote">Copia el % a cada renglón; después lo podés ajustar artículo por artículo.</p>
+        </div>
         <div id="lines"></div>
       </section>
 
@@ -249,7 +262,8 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
   const TOPE = 0.011; // escalas de 0,01 % son topes que Chess usa para cortar el beneficio
 
   const cache = {};
-  const S = { dist: "lifa", canal: "PREVENTA", D: null, cli: null, lines: [] };
+  const S = { dist: "lifa", canal: "PREVENTA", D: null, cli: null, lines: [], mAll: "" };
+  const limpiarPct = (v) => String(v ?? "").replace(/[^\d.,]/g, "");
 
   async function load(dist) {
     if (cache[dist]) return cache[dist];
@@ -448,8 +462,20 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
     ).join("") : '<p class="note">Ninguna acción coincide con el filtro.</p>';
   }
 
+  function renderBulk() {
+    $("bulk").hidden = !S.cli;
+    if (!S.cli) return;
+    if (document.activeElement !== $("mAll")) $("mAll").value = S.mAll;
+    const v = manualPct({ m: S.mAll });
+    $("mAllApply").disabled = !(v > 0);
+    $("mAllClear").hidden = !(S.mAll || S.lines.some((l) => manualPct(l) > 0));
+    $("mAllNote").textContent = v > 0
+      ? "“Aplicar a todos” copia " + pctf(v) + " a cada renglón; después lo podés ajustar artículo por artículo. Los artículos que sumes desde ahora lo toman solos."
+      : "Copia el % a cada renglón; después lo podés ajustar artículo por artículo.";
+  }
+
   function render() {
-    renderCli();
+    renderCli(); renderBulk();
     const res = S.cli ? calcular() : { lines: [], opps: [], totLista: 0, totFinal: 0, totMan: 0, percIva: 0, percIibb: 0, total: 0 };
     renderLines(res); renderTot(res); renderAcc();
   }
@@ -487,7 +513,7 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
     const exact = /^\d+$/.test(q) ? D.cliIdx.filter((x) => String(x.c[0]) === q) : [];
     const rest = D.cliIdx.filter((x) => !exact.includes(x) && toks.every((t) => x.k.includes(t)));
     return [...exact, ...rest].slice(0, 40).map((x) => ({ code: "#" + x.c[0], desc: (x.c[2] || x.c[1]) + (x.c[2] && x.c[2] !== x.c[1] ? " · " + x.c[1] : ""), side: "Lista " + x.c[4], cli: x.c }));
-  }, (it) => { S.cli = it.cli; S.lines = []; persist(); render(); $("artQ").focus(); });
+  }, (it) => { S.cli = it.cli; S.lines = []; S.mAll = ""; persist(); render(); $("artQ").focus(); });
 
   wireSearch($("artQ"), $("artRes"), (q) => {
     const D = S.D, l = S.cli && lista(); if (!l) return [];
@@ -507,17 +533,17 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
     return out.slice(0, 40);
   }, (it) => {
     const ex = S.lines.find((l) => l.c === it.c);
-    if (ex) ex.b = (Number(ex.b) || 0) + 1; else S.lines.push({ c: it.c, b: 1, u: 0 });
+    if (ex) ex.b = (Number(ex.b) || 0) + 1; else S.lines.push({ c: it.c, b: 1, u: 0, m: manualPct({ m: S.mAll }) > 0 ? S.mAll : "" });
     persist(); render();
   });
 
   // ---------- eventos ----------
   $("lines").addEventListener("input", (e) => {
     const t = e.target; if (!t.dataset.k) return;
-    if (t.dataset.k === "m") S.lines[+t.dataset.i].m = t.value.replace(/[^\d.,]/g, "");
+    if (t.dataset.k === "m") S.lines[+t.dataset.i].m = limpiarPct(t.value);
     else S.lines[+t.dataset.i][t.dataset.k] = Math.max(0, Math.floor(Number(t.value) || 0));
     persist();
-    const res = calcular(); renderTot(res);
+    const res = calcular(); renderTot(res); renderBulk();
     // re-render sin perder el foco del input que se esta editando
     const id = t.id, pos = t.selectionStart;
     renderLines(res);
@@ -525,13 +551,21 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
   });
   $("lines").addEventListener("click", (e) => { const b = e.target.closest("[data-rm]"); if (!b) return; S.lines.splice(+b.dataset.rm, 1); persist(); render(); });
   $("vaciar").addEventListener("click", () => { S.lines = []; persist(); render(); });
-  $("cliClear").addEventListener("click", () => { S.cli = null; S.lines = []; persist(); render(); setTimeout(() => $("cliQ").focus(), 0); });
+  $("mAll").addEventListener("input", (e) => { S.mAll = limpiarPct(e.target.value); persist(); renderBulk(); });
+  $("mAll").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); if (!$("mAllApply").disabled) $("mAllApply").click(); } });
+  $("mAllApply").addEventListener("click", () => {
+    if (!(manualPct({ m: S.mAll }) > 0)) return;
+    for (const l of S.lines) l.m = S.mAll;
+    persist(); render();
+  });
+  $("mAllClear").addEventListener("click", () => { S.mAll = ""; for (const l of S.lines) l.m = ""; $("mAll").value = ""; persist(); render(); });
+  $("cliClear").addEventListener("click", () => { S.cli = null; S.lines = []; S.mAll = ""; persist(); render(); setTimeout(() => $("cliQ").focus(), 0); });
   $("canal").addEventListener("change", (e) => { S.canal = e.target.value; persist(); render(); });
   $("accQ").addEventListener("input", renderAcc);
   $("accDetails").addEventListener("toggle", renderAcc);
   $("distSeg").addEventListener("click", (e) => { const b = e.target.closest("button[data-dist]"); if (b && b.dataset.dist !== S.dist) setDist(b.dataset.dist, true); });
 
-  function persist() { store.set("sim-pedidos", { dist: S.dist, canal: S.canal, cli: S.cli?.[0] ?? null, lines: S.lines }); }
+  function persist() { store.set("sim-pedidos", { dist: S.dist, canal: S.canal, cli: S.cli?.[0] ?? null, lines: S.lines, mAll: S.mAll }); }
 
   async function setDist(dist, reset) {
     S.dist = dist;
@@ -544,7 +578,7 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
       S.D = null; $("loadErr").textContent = err.message + ". Probá recargar la página."; $("loadErr").hidden = false;
       $("fresh").textContent = "Sin datos";
     }
-    if (reset) { S.cli = null; S.lines = []; persist(); }
+    if (reset) { S.cli = null; S.lines = []; S.mAll = ""; persist(); }
     renderFresh(); render();
   }
 
@@ -554,7 +588,7 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
     await setDist(saved.dist === "delorenzi" ? "delorenzi" : "lifa", false);
     if (S.D && saved.cli != null) {
       S.cli = S.D.clientes.find((c) => c[0] === saved.cli) || null;
-      if (S.cli) S.lines = (saved.lines || []).filter((l) => S.D.articulos[l.c]);
+      if (S.cli) { S.lines = (saved.lines || []).filter((l) => S.D.articulos[l.c]); S.mAll = limpiarPct(saved.mAll); }
       render();
     }
   })();
