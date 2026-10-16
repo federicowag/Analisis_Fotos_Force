@@ -234,7 +234,7 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
         <h3 style="font-size:.95rem;text-transform:uppercase;letter-spacing:.06em">Escalas</h3>
         <div class="opps" id="opps"></div>
       </div>
-      <p class="note" id="calcNote">Precio final = (lista × (1 + IVA) + internos) × (1 − suma de % de acciones y descuento manual). Percepciones: IIBB 3 % sobre neto + internos a no exentos; IVA 3 % sobre el neto a RI con pedido desde $ 100.000 de neto. Los precios negociados (BEES o Chess) no vienen en los datos: cargalos como descuento manual en cada renglón. Es una simulación: el precio definitivo lo calcula Chess al controlar el pedido.</p>
+      <p class="note" id="calcNote">Precio final = (lista × (1 + IVA) + internos) × (1 − suma de % de acciones y descuento manual). Percepciones: IIBB 3 % sobre neto + internos a no exentos; IVA 3 % sobre el neto a RI con pedido desde $ 100.000 de neto. El final x bulto y el subtotal de cada renglón ya incluyen IVA, internos y percepciones: la suma de los subtotales da el Total. Los precios negociados (BEES o Chess) no vienen en los datos: cargalos como descuento manual en cada renglón. Es una simulación: el precio definitivo lo calcula Chess al controlar el pedido.</p>
     </aside>
   </div>
 
@@ -342,7 +342,8 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
       l.listaB = precio * (1 - bonLista / 100) * (1 + iva) + internos;
       // Chess descuenta los internos con el mismo % que el neto (verificado contra pedidos reales)
       l.finalB = l.listaB * (1 - l.pct / 100);
-      l.netoB = precio * (1 - bonLista / 100) * (1 - l.pct / 100);
+      l.netoListaB = precio * (1 - bonLista / 100);
+      l.netoB = l.netoListaB * (1 - l.pct / 100);
       l.intB = internos * (1 - l.pct / 100);
       l.sub = l.finalB * l.q;
       totMan += l.listaB * l.q * Math.min(l.man || 0, l.pct) / 100;
@@ -357,7 +358,13 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
     const ivaEstado = c[5] !== "RI" ? "no" : D.ivaExcl.has(c[0]) ? "excluido" : totNeto + 1e-6 >= P.iva_min_neto ? "aplica" : "minimo";
     const tIva = ivaEstado === "aplica" ? P.iva : 0, tIibb = c[6] ? 0 : P.iibb;
     const percIva = tIva * totNeto, percIibb = tIibb * (totNeto + totInt);
-    for (const l of lines) if (l.pr) l.percB = tIva * l.netoB + tIibb * (l.netoB + l.intB);
+    for (const l of lines) {
+      if (!l.pr) continue;
+      l.percB = tIva * l.netoB + tIibb * (l.netoB + l.intB);
+      l.totB = l.finalB + l.percB;
+      l.totListaB = l.listaB + tIva * l.netoListaB + tIibb * (l.netoListaB + l.pr[2]);
+      l.subTot = l.totB * l.q;
+    }
     return { lines, opps, totLista, totFinal, totNeto, totMan, percIva, percIibb, ivaEstado, total: totFinal + percIva + percIibb };
   }
 
@@ -399,7 +406,7 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
     $("vaciar").hidden = !S.lines.length;
     if (!S.cli) { $("lines").innerHTML = '<div class="empty-state"><b>Elegí un cliente para empezar.</b>Buscalo por código, razón social o nombre de fantasía. Después sumá artículos y vas a ver el precio final con las acciones que le aplican.</div>'; return; }
     if (!S.lines.length) { $("lines").innerHTML = '<div class="empty-state"><b>El pedido está vacío.</b>Buscá un artículo o combo arriba. Cada renglón muestra las acciones que se activan, un campo para cargar un descuento manual y el precio final por bulto y por unidad.</div>'; return; }
-    let h = '<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Cantidad</th><th class="n">Desc.</th><th class="n">Final x bulto</th><th class="n">Subtotal</th><th></th></tr></thead><tbody>';
+    let h = '<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Cantidad</th><th class="n">Desc.</th><th class="n" title="Con IVA, internos y percepciones">Final x bulto</th><th class="n" title="Con IVA, internos y percepciones">Subtotal</th><th></th></tr></thead><tbody>';
     res.lines.forEach((l, i) => {
       const a = D.articulos[l.c] || ["Artículo " + l.c, 1];
       const combo = D.comboMap[l.c];
@@ -411,10 +418,10 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
         '<div class="qty"><input type="text" inputmode="decimal" autocomplete="off" class="man' + (l.man ? " on" : "") + '" id="m' + i + '" data-i="' + i + '" data-k="m" value="' + esc(l.m ?? "") + '" placeholder="0" aria-label="Descuento manual en %"><span>% desc. manual</span></div></div></td>';
       if (l.pr) {
         h += '<td data-l="Desc." class="n ' + (l.pct ? "disc" : "muted") + '">' + (l.pct ? "−" + pctf(l.pct) : "—") + "</td>" +
-          '<td data-l="Final x bulto" class="n"><b>' + fmt.format(l.finalB) + "</b>" + (l.pct ? '<div class="strike">' + fmt.format(l.listaB) + "</div>" : "") +
-          '<div class="unit">' + fmt2.format(l.finalB / (a[1] || 1)) + " x u</div>" +
-          (l.percB ? '<div class="unit">con percep. ' + fmt.format(l.finalB + l.percB) + "</div>" : "") + "</td>" +
-          '<td data-l="Subtotal" class="n">' + fmt.format(l.sub) + "</td>";
+          '<td data-l="Final x bulto" class="n"><b>' + fmt.format(l.totB) + "</b>" + (l.pct ? '<div class="strike">' + fmt.format(l.totListaB) + "</div>" : "") +
+          '<div class="unit">' + fmt2.format(l.totB / (a[1] || 1)) + " x u</div>" +
+          (l.percB > 0.005 ? '<div class="unit">sin percep. ' + fmt.format(l.finalB) + "</div>" : "") + "</td>" +
+          '<td data-l="Subtotal" class="n">' + fmt.format(l.subTot) + "</td>";
       } else h += '<td class="n muted">—</td><td></td><td></td>';
       h += '<td><button type="button" class="rm" data-rm="' + i + '" aria-label="Quitar renglón">×</button></td></tr>';
     });
@@ -429,7 +436,7 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
         '<div class="row"><span class="muted">Total a precio de lista</span><span class="num">' + fmt.format(res.totLista) + "</span></div>" +
         '<div class="row"><span class="muted">Descuento por acciones</span><span class="num disc">−' + fmt.format(ahorro - res.totMan) + (res.totLista ? " (" + pctf(((ahorro - res.totMan) / res.totLista) * 100) + ")" : "") + "</span></div>" +
         (res.totMan > 0.5 ? '<div class="row"><span class="muted">Descuento manual</span><span class="num disc">−' + fmt.format(res.totMan) + " (" + pctf((res.totMan / res.totLista) * 100) + ")</span></div>" : "") +
-        '<div class="row"><span class="muted">Subtotal con IVA</span><span class="num">' + fmt.format(res.totFinal) + "</span></div>" +
+        '<div class="row"><span class="muted">Subtotal sin percepciones</span><span class="num">' + fmt.format(res.totFinal) + "</span></div>" +
         (res.percIva ? '<div class="row"><span class="muted">Percepción IVA ' + pctf(S.D.perc.iva * 100) + '</span><span class="num">' + fmt.format(res.percIva) + "</span></div>" : "") +
         (res.percIibb ? '<div class="row"><span class="muted">Percepción IIBB ' + pctf(S.D.perc.iibb * 100) + '</span><span class="num">' + fmt.format(res.percIibb) + "</span></div>" : "") +
         '<div class="row final"><span>Total</span><span class="big num">' + fmt.format(res.total) + "</span></div>" +

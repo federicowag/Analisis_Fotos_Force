@@ -53,6 +53,9 @@ queda listado en `avisos.gp_aproximados`.
     pedidos recientes superaron ese monto sin percepción se toman como excluidos
     (`percepciones.iva_excluidos`).
   Validado contra pedidos reales: el total coincide al peso cuando coinciden los descuentos.
+- El final x bulto, el precio por unidad y el subtotal de cada renglón incluyen IVA, internos
+  y percepciones (el tachado de lista también, para comparar con BEES); la suma de los
+  subtotales da el Total. Validado renglón por renglón con el pedido 462486 de DELORENZI.
 - Descuento manual por renglón: el promotor puede cargar un % (admite coma decimal) que se
   suma a las acciones, igual que Chess suma un renglón de negociación ("G") con las promos
   del mismo artículo. Sirve para simular las negociaciones por cliente (promo "NEGOCIACION",
