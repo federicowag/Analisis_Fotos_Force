@@ -53,9 +53,12 @@ queda listado en `avisos.gp_aproximados`.
     pedidos recientes superaron ese monto sin percepción se toman como excluidos
     (`percepciones.iva_excluidos`).
   Validado contra pedidos reales: el total coincide al peso cuando coinciden los descuentos.
-- No incluye límites de bultos por cliente ni los precios que BEES negocia por cliente:
-  esos llegan a Chess como promo "NEGOCIACION" (códigos 6xxx/7xxx) con el precio ya
-  modificado y no están en el maestro de acciones.
+- Descuento manual por renglón: el promotor puede cargar un % (admite coma decimal) que se
+  suma a las acciones, igual que Chess suma un renglón de negociación ("G") con las promos
+  del mismo artículo. Sirve para simular las negociaciones por cliente (promo "NEGOCIACION",
+  códigos 6xxx/7xxx), que no están en el maestro de acciones. Validado con el pedido BEES
+  462486 de DELORENZI: cargando los % negociados, el total coincide con el de Chess.
+- No incluye límites de bultos por cliente.
 
 ## Correrlo a mano
 

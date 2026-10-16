@@ -37,6 +37,7 @@
   --bad: #ef8a80; --bad-soft: #3c1f1c; --focus: #7aa7ff; color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.45; }
 .wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 12px 48px; display: grid; gap: 14px; }
 h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; letter-spacing: .01em; }
@@ -100,6 +101,9 @@ td .art { font-weight: 600; }
 td .meta { font-size: .8rem; color: var(--muted); }
 td input[type="number"] { width: 58px; text-align: right; padding: 5px 6px; }
 .qty { display: flex; gap: 6px; align-items: center; }
+.qcol { display: grid; gap: 6px; }
+td input.man { width: 58px; text-align: right; padding: 5px 6px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; }
+td input.man.on { border-color: var(--warn); background: var(--warn-soft); color: var(--warn); font-weight: 600; }
 .qty span { font-size: .72rem; color: var(--muted); }
 .disc { color: var(--accent); font-weight: 600; }
 .strike { text-decoration: line-through; color: var(--muted); font-size: .82rem; }
@@ -118,7 +122,7 @@ td input[type="number"] { width: 58px; text-align: right; padding: 5px 6px; }
   td.qcell { grid-column: 1 / -1; }
   td.n { text-align: left; }
   td[data-l]::before { content: attr(data-l); display: block; font-family: var(--font-display); font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-  td input[type="number"] { width: 72px; }
+  td input[type="number"], td input.man { width: 72px; }
 }
 .empty-state { border: 1px dashed var(--line); border-radius: var(--r); padding: 18px; color: var(--muted); display: grid; gap: 6px; }
 .empty-state b { color: var(--ink); }
@@ -217,13 +221,13 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
         <h3 style="font-size:.95rem;text-transform:uppercase;letter-spacing:.06em">Escalas</h3>
         <div class="opps" id="opps"></div>
       </div>
-      <p class="note" id="calcNote">Precio final = (lista × (1 + IVA) + internos) × (1 − suma de % de acciones). Percepciones: IIBB 3 % sobre neto + internos a no exentos; IVA 3 % sobre el neto a RI con pedido desde $ 100.000 de neto. No incluye precios negociados en BEES. Es una simulación: el precio definitivo lo calcula Chess al controlar el pedido.</p>
+      <p class="note" id="calcNote">Precio final = (lista × (1 + IVA) + internos) × (1 − suma de % de acciones y descuento manual). Percepciones: IIBB 3 % sobre neto + internos a no exentos; IVA 3 % sobre el neto a RI con pedido desde $ 100.000 de neto. Los precios negociados (BEES o Chess) no vienen en los datos: cargalos como descuento manual en cada renglón. Es una simulación: el precio definitivo lo calcula Chess al controlar el pedido.</p>
     </aside>
   </div>
 
   <footer class="foot">
     <div id="footData"></div>
-    <div>Solo lectura: la página no carga pedidos en Chess. No incluye límites de bultos por cliente ni precios negociados por BEES (promo "NEGOCIACION"). Los RI excluidos de la percepción de IVA salen de los pedidos recientes de Chess.</div>
+    <div>Solo lectura: la página no carga pedidos en Chess. No incluye límites de bultos por cliente. Las negociaciones (promo "NEGOCIACION") se simulan con el descuento manual de cada renglón, que se suma a las acciones como en Chess. Los RI excluidos de la percepción de IVA salen de los pedidos recientes de Chess.</div>
   </footer>
 </div>
 
@@ -278,6 +282,7 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
 
   function lista() { return S.D.listas[String(S.cli[4])]; }
   function precioDe(codart) { const l = lista(); return l ? l.p[String(codart)] : null; }
+  const manualPct = (ln) => { const v = parseFloat(String(ln.m ?? "").replace(",", ".")); return isFinite(v) ? Math.min(Math.max(v, 0), 100) : 0; };
   const bultos = (ln) => (Number(ln.b) || 0) + (Number(ln.u) || 0) / (S.D.articulos[ln.c]?.[1] || 1);
 
   function calcular() {
@@ -308,7 +313,12 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
         opps.push({ a, q, curP, done: true });
       }
     }
-    let totLista = 0, totFinal = 0, totNeto = 0, totInt = 0;
+    // descuento manual: se suma a las acciones, igual que un renglon de negociacion en Chess
+    for (const l of lines) {
+      const m = manualPct(l);
+      if (m > 0) { l.pct += m; l.man = m; l.apl.push({ c: "manual", d: "Desc. manual", p: m, man: true }); }
+    }
+    let totLista = 0, totFinal = 0, totNeto = 0, totInt = 0, totMan = 0;
     for (const l of lines) {
       const pr = precioDe(l.c);
       l.pr = pr;
@@ -321,6 +331,7 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
       l.netoB = precio * (1 - bonLista / 100) * (1 - l.pct / 100);
       l.intB = internos * (1 - l.pct / 100);
       l.sub = l.finalB * l.q;
+      totMan += l.listaB * l.q * Math.min(l.man || 0, l.pct) / 100;
       totLista += l.listaB * l.q;
       totFinal += l.sub;
       totNeto += l.netoB * l.q;
@@ -333,7 +344,7 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
     const tIva = ivaEstado === "aplica" ? P.iva : 0, tIibb = c[6] ? 0 : P.iibb;
     const percIva = tIva * totNeto, percIibb = tIibb * (totNeto + totInt);
     for (const l of lines) if (l.pr) l.percB = tIva * l.netoB + tIibb * (l.netoB + l.intB);
-    return { lines, opps, totLista, totFinal, totNeto, percIva, percIibb, ivaEstado, total: totFinal + percIva + percIibb };
+    return { lines, opps, totLista, totFinal, totNeto, totMan, percIva, percIibb, ivaEstado, total: totFinal + percIva + percIibb };
   }
 
   // ---------- render ----------
@@ -373,16 +384,17 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
     const D = S.D;
     $("vaciar").hidden = !S.lines.length;
     if (!S.cli) { $("lines").innerHTML = '<div class="empty-state"><b>Elegí un cliente para empezar.</b>Buscalo por código, razón social o nombre de fantasía. Después sumá artículos y vas a ver el precio final con las acciones que le aplican.</div>'; return; }
-    if (!S.lines.length) { $("lines").innerHTML = '<div class="empty-state"><b>El pedido está vacío.</b>Buscá un artículo o combo arriba. Cada renglón muestra el precio de lista, las acciones que se activan y el precio final por bulto y por unidad.</div>'; return; }
+    if (!S.lines.length) { $("lines").innerHTML = '<div class="empty-state"><b>El pedido está vacío.</b>Buscá un artículo o combo arriba. Cada renglón muestra las acciones que se activan, un campo para cargar un descuento manual y el precio final por bulto y por unidad.</div>'; return; }
     let h = '<div class="table-wrap"><table><thead><tr><th>Artículo</th><th>Cantidad</th><th class="n">Desc.</th><th class="n">Final x bulto</th><th class="n">Subtotal</th><th></th></tr></thead><tbody>';
     res.lines.forEach((l, i) => {
       const a = D.articulos[l.c] || ["Artículo " + l.c, 1];
       const combo = D.comboMap[l.c];
       h += "<tr><td><div class=\"art\">" + esc(a[0]) + '</div><div class="meta"><span class="mono">' + l.c + "</span> · " + a[1] + " u/bulto" + (combo ? " · combo" : "") + "</div>";
-      if (l.apl.length) h += '<div class="acc-list">' + l.apl.map((x) => '<span class="chip ok" title="Acción ' + x.c + '">' + esc(x.d) + " " + pctf(x.p) + "</span>").join("") + "</div>";
+      if (l.apl.length) h += '<div class="acc-list">' + l.apl.map((x) => '<span class="chip ' + (x.man ? "warn" : "ok") + '" title="' + (x.man ? "Descuento cargado a mano" : "Acción " + x.c) + '">' + esc(x.d) + " " + pctf(x.p) + "</span>").join("") + "</div>";
       if (!l.pr) h += '<div class="acc-list"><span class="chip bad">Sin precio en la lista del cliente</span></div>';
-      h += '</td><td class="qcell"><div class="qty"><input type="number" min="0" step="1" inputmode="numeric" id="b' + i + '" data-i="' + i + '" data-k="b" value="' + (l.b ?? "") + '" aria-label="Bultos"><span>blt</span>' +
-        (a[1] > 1 ? '<input type="number" min="0" step="1" inputmode="numeric" id="u' + i + '" data-i="' + i + '" data-k="u" value="' + (l.u ?? "") + '" aria-label="Unidades sueltas"><span>u</span>' : "") + "</div></td>";
+      h += '</td><td class="qcell"><div class="qcol"><div class="qty"><input type="number" min="0" step="1" inputmode="numeric" id="b' + i + '" data-i="' + i + '" data-k="b" value="' + (l.b ?? "") + '" aria-label="Bultos"><span>blt</span>' +
+        (a[1] > 1 ? '<input type="number" min="0" step="1" inputmode="numeric" id="u' + i + '" data-i="' + i + '" data-k="u" value="' + (l.u ?? "") + '" aria-label="Unidades sueltas"><span>u</span>' : "") + "</div>" +
+        '<div class="qty"><input type="text" inputmode="decimal" autocomplete="off" class="man' + (l.man ? " on" : "") + '" id="m' + i + '" data-i="' + i + '" data-k="m" value="' + esc(l.m ?? "") + '" placeholder="0" aria-label="Descuento manual en %"><span>% desc. manual</span></div></div></td>';
       if (l.pr) {
         h += '<td data-l="Desc." class="n ' + (l.pct ? "disc" : "muted") + '">' + (l.pct ? "−" + pctf(l.pct) : "—") + "</td>" +
           '<td data-l="Final x bulto" class="n"><b>' + fmt.format(l.finalB) + "</b>" + (l.pct ? '<div class="strike">' + fmt.format(l.listaB) + "</div>" : "") +
@@ -401,7 +413,8 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
     $("tot").innerHTML = S.lines.length
       ? '<div class="row"><span class="muted">Bultos</span><span class="num">' + qf(n) + "</span></div>" +
         '<div class="row"><span class="muted">Total a precio de lista</span><span class="num">' + fmt.format(res.totLista) + "</span></div>" +
-        '<div class="row"><span class="muted">Descuento por acciones</span><span class="num disc">−' + fmt.format(ahorro) + (res.totLista ? " (" + pctf((ahorro / res.totLista) * 100) + ")" : "") + "</span></div>" +
+        '<div class="row"><span class="muted">Descuento por acciones</span><span class="num disc">−' + fmt.format(ahorro - res.totMan) + (res.totLista ? " (" + pctf(((ahorro - res.totMan) / res.totLista) * 100) + ")" : "") + "</span></div>" +
+        (res.totMan > 0.5 ? '<div class="row"><span class="muted">Descuento manual</span><span class="num disc">−' + fmt.format(res.totMan) + " (" + pctf((res.totMan / res.totLista) * 100) + ")</span></div>" : "") +
         '<div class="row"><span class="muted">Subtotal con IVA</span><span class="num">' + fmt.format(res.totFinal) + "</span></div>" +
         (res.percIva ? '<div class="row"><span class="muted">Percepción IVA ' + pctf(S.D.perc.iva * 100) + '</span><span class="num">' + fmt.format(res.percIva) + "</span></div>" : "") +
         (res.percIibb ? '<div class="row"><span class="muted">Percepción IIBB ' + pctf(S.D.perc.iibb * 100) + '</span><span class="num">' + fmt.format(res.percIibb) + "</span></div>" : "") +
@@ -437,7 +450,7 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
 
   function render() {
     renderCli();
-    const res = S.cli ? calcular() : { lines: [], opps: [], totLista: 0, totFinal: 0, percIva: 0, percIibb: 0, total: 0 };
+    const res = S.cli ? calcular() : { lines: [], opps: [], totLista: 0, totFinal: 0, totMan: 0, percIva: 0, percIibb: 0, total: 0 };
     renderLines(res); renderTot(res); renderAcc();
   }
 
@@ -501,8 +514,8 @@ details.accs > summary { cursor: pointer; font-family: var(--font-display); font
   // ---------- eventos ----------
   $("lines").addEventListener("input", (e) => {
     const t = e.target; if (!t.dataset.k) return;
-    const v = Math.max(0, Math.floor(Number(t.value) || 0));
-    S.lines[+t.dataset.i][t.dataset.k] = v;
+    if (t.dataset.k === "m") S.lines[+t.dataset.i].m = t.value.replace(/[^\d.,]/g, "");
+    else S.lines[+t.dataset.i][t.dataset.k] = Math.max(0, Math.floor(Number(t.value) || 0));
     persist();
     const res = calcular(); renderTot(res);
     // re-render sin perder el foco del input que se esta editando
