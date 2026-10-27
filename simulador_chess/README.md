@@ -84,10 +84,18 @@ Si una distribuidora usa otro usuario: `CHESS_WEB_USER_DELORENZI` /
 
 ## Actualización diaria
 
-La tarea programada de claude.ai:
+La tarea programada de claude.ai ("Simulador de pedidos: actualizar datos de Chess (sesión
+dedicada)", todos los días a las 5:52 hora de Argentina) despierta a una sesión cloud que ya
+tiene este repo adjunto y:
 1. hace checkout de esta rama,
 2. corre `extraer.py --salida simulador_chess/pagina/data`,
 3. republica el Artifact con `pagina/index.html` y los dos JSON.
+
+La sesión corre sin nadie mirando, así que `.claude/settings.json` permite la herramienta
+Artifact sin aprobación; sin esa regla el control automático de permisos bloquea la
+publicación y la página queda con datos viejos (pasó el 26 y 27/10). Una tarea que arranca
+en una sesión nueva sin el repo no sirve: la regla solo se carga si el repo está desde el
+inicio de la sesión.
 
 Las credenciales se leen de las variables de entorno del entorno cloud
 (`CHESS_WEB_USER`, `CHESS_WEB_PASSWORD`). Nunca van en el repo ni en el prompt de la tarea.
